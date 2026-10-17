@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="omni-token" content="{{TOKEN}}">
+  <title>OMNI</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu">☰</button>
+    <div class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> OMNI <span class="version">v{{VERSION}}</span></div>
+    <div class="topbar-right">
+      <span class="conn" id="conn" title="Live connection"><span class="dot"></span><span id="conn-text">Connecting</span></span>
+      <button class="icon-btn" id="theme-btn" aria-label="Switch theme" title="Switch theme">◐</button>
+    </div>
+  </header>
+
+  <nav class="sidebar" id="sidebar" aria-label="Sections">
+    <button data-view="overview" class="active">Overview</button>
+    <button data-view="cpu">CPU</button>
+    <button data-view="gpu">GPU</button>
+    <button data-view="battery">Battery</button>
+    <button data-view="storage">Memory &amp; storage</button>
+    <button data-view="network">Network</button>
+    <button data-view="processes">Processes</button>
+    <div class="nav-sep"></div>
+    <button data-view="power">Power</button>
+    <button data-view="cleanup">Cleanup</button>
+    <button data-view="bench">Benchmarks</button>
+    <button data-view="history">History</button>
+    <div class="nav-sep"></div>
+    <button data-view="settings">Settings</button>
+  </nav>
+
+  <main class="content">
+    <div id="alerts" class="alerts" aria-live="polite"></div>
+
+    <section class="view active" id="view-overview">
+      <h1>Overview</h1>
+      <div class="tiles" id="tiles"></div>
+      <div class="grid-2">
+        <div class="card"><h2>Usage</h2><div class="chart" data-chart="usage"></div></div>
+        <div class="card"><h2>Temperature</h2><div class="chart" data-chart="temps"></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-cpu">
+      <h1>CPU</h1>
+      <div class="card"><div class="kv" id="cpu-kv"></div></div>
+      <div class="card"><h2>Load per thread</h2><div class="cores" id="cores"></div></div>
+      <div class="grid-2">
+        <div class="card"><h2>Usage</h2><div class="chart" data-chart="cpu-usage"></div></div>
+        <div class="card"><h2>Clock speed</h2><div class="chart" data-chart="cpu-clock"></div></div>
+      </div>
+      <div class="card"><h2>Temperature</h2><div class="chart" data-chart="cpu-temp"></div></div>
+    </section>
+
+    <section class="view" id="view-gpu">
+      <h1>GPU</h1>
+      <div class="card"><div class="kv" id="gpu-kv"></div><p class="hint" id="gpu-note"></p></div>
+      <div class="grid-2">
+        <div class="card"><h2>Load</h2><div class="chart" data-chart="gpu-usage"></div></div>
+        <div class="card"><h2>Power draw</h2><div class="chart" data-chart="gpu-power"></div></div>
+      </div>
+      <div class="card"><h2>Temperature</h2><div class="chart" data-chart="gpu-temp"></div></div>
+    </section>
+
+    <section class="view" id="view-battery">
+      <h1>Battery</h1>
+      <div class="grid-2">
+        <div class="card battery-hero" id="battery-hero"></div>
+        <div class="card"><div class="kv" id="battery-kv"></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><h2>Charge level</h2><div class="chart" data-chart="batt-pct"></div></div>
+        <div class="card"><h2>Charge / discharge power</h2><p class="hint">Positive = charging, negative = draining.</p><div class="chart" data-chart="batt-power"></div></div>
+      </div>
+      <div class="card"><h2>Capacity over time</h2><p class="hint">Recorded once a day. Wear shows up here over months.</p><div class="chart" data-chart="batt-capacity"></div></div>
+    </section>
+
+    <section class="view" id="view-storage">
+      <h1>Memory &amp; storage</h1>
+      <div class="card"><h2>Memory</h2><div id="memory"></div></div>
+      <div class="card"><h2>Drives</h2><div id="volumes"></div></div>
+      <div class="card"><h2>SSD health</h2><div class="table-wrap"><table id="disks"></table></div>
+        <p class="hint">Read from Windows' storage reliability counters every 5 minutes.</p></div>
+      <div class="card"><h2>Disk activity</h2><div class="chart" data-chart="disk-io"></div></div>
+    </section>
+
+    <section class="view" id="view-network">
+      <h1>Network</h1>
+      <div class="card"><div class="kv" id="net-kv"></div></div>
+      <div class="card"><h2>Throughput</h2><div class="chart" data-chart="net-io"></div></div>
+    </section>
+
+    <section class="view" id="view-processes">
+      <h1>Processes</h1>
+      <div class="card">
+        <div class="toolbar">
+          <div class="segmented" id="proc-sort">
+            <button data-sort="cpu" class="active">By CPU</button>
+            <button data-sort="mem">By memory</button>
+          </div>
+          <span class="hint">CPU % uses Task Manager's scale: 100 % = the whole processor.</span>
+        </div>
+        <div class="table-wrap"><table id="procs"></table></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-power">
+      <h1>Power</h1>
+      <div class="card"><h2>Power plan</h2><div id="plans" class="choice-list"></div></div>
+      <div class="card"><h2>Windows power mode</h2>
+        <div class="segmented" id="power-mode">
+          <button data-mode="efficiency">Best efficiency</button>
+          <button data-mode="balanced">Balanced</button>
+          <button data-mode="performance">Best performance</button>
+        </div>
+        <p class="hint">Windows only applies this slider while the <b>Balanced</b> plan is active.</p>
+      </div>
+      <div class="card"><h2>Battery tweaks</h2>
+        <p class="hint">Only change behaviour on battery. OMNI saves the original values first, so Restore puts everything back.</p>
+        <div id="tweaks"></div>
+        <div class="toolbar"><button class="btn" id="tweak-restore">Restore original settings</button></div>
+        <p class="hint">OMNI never changes PCIe ASPM: on some NVMe drives it makes the SSD drop out (WHEA Event 17).</p>
+      </div>
+    </section>
+
+    <section class="view" id="view-cleanup">
+      <h1>Cleanup</h1>
+      <div class="card">
+        <p class="hint" id="cleanup-intro">Scan first. Only files older than the age set in Settings are removed, and files in use are skipped.</p>
+        <div class="toolbar"><button class="btn primary" id="cleanup-scan">Scan</button></div>
+        <div class="table-wrap"><table id="cleanup-table"></table></div>
+        <div class="toolbar"><button class="btn danger" id="cleanup-run" hidden>Delete selected</button></div>
+        <div id="cleanup-result"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-bench">
+      <h1>Benchmarks</h1>
+      <div class="bench-grid" id="bench-cards"></div>
+      <div class="card"><h2>Stress test</h2>
+        <p class="hint">Runs the CPU and/or GPU at full load and watches clocks, temperature and power limits. Plug in first.</p>
+        <div class="toolbar">
+          <div class="segmented" id="stress-target">
+            <button data-target="cpu" class="active">CPU</button>
+            <button data-target="gpu">GPU</button>
+            <button data-target="both">Both</button>
+          </div>
+          <label class="inline">Duration
+            <select id="stress-seconds"><option value="60">1 min</option><option value="180" selected>3 min</option><option value="600">10 min</option></select>
+          </label>
+          <button class="btn primary" id="stress-start">Start</button>
+        </div>
+        <div id="stress-result"></div>
+        <div class="chart" data-chart="stress" hidden></div>
+      </div>
+      <div class="card"><h2>Past results</h2><div class="table-wrap"><table id="bench-history"></table></div></div>
+    </section>
+
+    <section class="view" id="view-history">
+      <h1>History</h1>
+      <div class="toolbar">
+        <div class="segmented" id="history-range">
+          <button data-range="1h" class="active">1 h</button>
+          <button data-range="6h">6 h</button>
+          <button data-range="24h">24 h</button>
+          <button data-range="7d">7 days</button>
+          <button data-range="30d">30 days</button>
+        </div>
+        <a class="btn" id="history-export" href="#">Export CSV</a>
+      </div>
+      <div class="grid-2">
+        <div class="card"><h2>Usage</h2><div class="chart" data-chart="h-usage"></div></div>
+        <div class="card"><h2>Temperature</h2><div class="chart" data-chart="h-temps"></div></div>
+        <div class="card"><h2>Battery level</h2><div class="chart" data-chart="h-batt"></div></div>
+        <div class="card"><h2>GPU power</h2><div class="chart" data-chart="h-gpu-power"></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings">
+      <h1>Settings</h1>
+      <form id="settings-form" class="settings"></form>
+      <div class="toolbar">
+        <button class="btn primary" id="settings-save">Save</button>
+        <button class="btn" id="settings-reset">Reset to defaults</button>
+        <span id="settings-status" class="hint"></span>
+      </div>
+      <div class="card"><h2>About</h2><div class="kv" id="about"></div></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/static/charts.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
