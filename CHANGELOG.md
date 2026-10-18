@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.0 — 2026-10-18: works on any PC, Internet test fixed
+
+- **Your device:** the Fans & sensors page now starts by identifying the PC:
+  - It shows the maker, model, product line (OMEN, Legion, ROG, XPS…), laptop or desktop, and the BIOS version.
+  - A checklist then shows what OMNI can read and change on this machine: works, partly, needs setup, or not available.
+  - When something needs setup, it says what to do for that maker, e.g. Dell Command | Monitor for Dell fans.
+  - It lists what each maker lets you change (fan modes, charge limit, performance mode) and in which app.
+  - A fold-out shows every fan source OMNI checked and what each one found.
+- **More fan sources:**
+  - Dell Command | Monitor (Dell, Alienware).
+  - HP business BIOS sensors (EliteBook, ProBook, ZBook).
+  - Lenovo Legion / LOQ Gaming Zone (experimental).
+  - Windows Win32_Fan.
+  - These are tried only when the HP OMEN BIOS isn't present. Settings → Sensors can turn them off.
+- **Internet test fixed:**
+  - Cloudflare limits how many tests a connection can run (HTTP 429, for about an hour). When that happens, OMNI now switches to the nearest of ten download mirrors (Linode, Hetzner, OVH) and says so under the result.
+  - The switch works both before the test and in the middle of a download.
+  - The old saved server address counts as "auto", so existing settings get the fallback too.
+  - A test that was already running is followed instead of showing "already running".
+
 ## 2.2.0 — 2026-10-18: continuous charts and a cleaner UI
 
 - **Continuous live charts:**

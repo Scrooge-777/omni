@@ -82,6 +82,77 @@ def test_speed_test_against_local_server(speed_server):
     assert updates[-1][0] == 1.0
 
 
+class _RateLimitedServer(_FakeSpeedServer):
+    """Answers tiny requests but refuses real downloads, like Cloudflare after many tests."""
+
+    def do_GET(self):
+        if self.path.startswith("/__down") and int(self.path.split("bytes=")[1]) > 1000:
+            self.send_response(429)
+            self.send_header("Retry-After", "3381")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().do_GET()
+
+
+class _FileMirror(BaseHTTPRequestHandler):
+    """A static 30 MB test file served with HTTP range support, like Linode's mirrors."""
+    protocol_version = "HTTP/1.1"
+    size = 30_000_000
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        start, end = 0, self.size - 1
+        if "Range" in self.headers:
+            first, last = self.headers["Range"].split("=")[1].split("-")
+            start, end = int(first), min(int(last), self.size - 1)
+        length = end - start + 1
+        self.send_response(206)
+        self.send_header("Content-Range", f"bytes {start}-{end}/{self.size}")
+        self.send_header("Content-Length", str(length))
+        self.end_headers()
+        try:
+            while length > 0:
+                chunk = b"y" * min(65536, length)
+                self.wfile.write(chunk)
+                length -= len(chunk)
+        except (ConnectionError, OSError):
+            pass
+
+
+def _serve(handler):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def test_auto_falls_back_to_nearest_mirror_when_rate_limited():
+    limited, limited_url = _serve(_RateLimitedServer)
+    mirror, mirror_url = _serve(_FileMirror)
+    try:
+        result = nettest.speed_test("auto", streams=2, seconds=1.5, cloudflare=limited_url,
+                                    mirrors=[("Dead mirror", "http://127.0.0.1:9/x.bin"), ("Local mirror", mirror_url + "/file.bin")])
+    finally:
+        limited.shutdown()
+        mirror.shutdown()
+    assert result["download_server"] == "Local mirror"
+    assert result["download_mbps"] > 0 and result["latency_ms"] is not None
+    assert result["upload_server"] and result["upload_mbps"] > 0  # upload still works on the limited server
+    assert "rate-limiting" in result["notes"][0] and "Local mirror" in result["notes"][0]
+
+
+def test_custom_server_does_not_fall_back():
+    limited, limited_url = _serve(_RateLimitedServer)
+    try:
+        with pytest.raises(nettest.NetTestError, match="rate-limiting"):
+            nettest.speed_test(limited_url, parts=["download"], seconds=1)
+    finally:
+        limited.shutdown()
+
+
 def test_speed_test_parts_and_stop(speed_server):
     result = nettest.speed_test(speed_server, parts=["latency"], seconds=1)
     assert "download_mbps" not in result and result["latency_ms"] is not None
@@ -184,3 +255,16 @@ def test_speedtest_server_setting_validated(omni_home):
         s.update({"network": {"speedtest_server": "file:///etc/passwd"}})
     s.update({"network": {"speedtest_server": "https://speed.example.net", "streams": 8}})
     assert s.get("network", "streams") == 8
+
+
+def test_old_cloudflare_default_still_falls_back(monkeypatch):
+    limited, limited_url = _serve(_RateLimitedServer)
+    mirror, mirror_url = _serve(_FileMirror)
+    monkeypatch.setattr(nettest, "CLOUDFLARE", limited_url)
+    try:
+        result = nettest.speed_test(limited_url + "/", parts=["latency", "download"], seconds=1, cloudflare=limited_url,
+                                    mirrors=[("Local mirror", mirror_url + "/file.bin")])
+    finally:
+        limited.shutdown()
+        mirror.shutdown()
+    assert result["download_server"] == "Local mirror"

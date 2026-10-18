@@ -9,6 +9,9 @@ Windows has no standard fan-speed API, so OMNI combines several sources:
   most desktops and many laptops (ASUS, Lenovo, Dell, MSI, Acer...).
 - HWiNFO: with "Shared Memory Support" enabled, every HWiNFO sensor is read from its
   shared memory block.
+- Vendor WMI providers: Dell Command | Monitor (Dell / Alienware), HP business BIOS
+  sensors (EliteBook, ProBook, ZBook), Lenovo Legion / LOQ Gaming Zone, and the generic
+  Win32_Fan class some desktops fill in.
 
 Every source is optional; missing ones are skipped silently.
 """
@@ -209,6 +212,105 @@ class HwinfoBridge:
                 k32.UnmapViewOfFile(view)
         finally:
             k32.CloseHandle(handle)
+
+
+# --------------------------------------------------------------------------- vendor WMI providers
+
+RPM_UNITS = 19  # CIM BaseUnits value for revolutions per minute
+
+
+def numeric_fans(rows, source: str, hardware: str) -> list[dict]:
+    """CIM numeric sensors (Dell DCIM_NumericSensor, HP_BIOSNumericSensor) -> fan readings.
+    Each row is a dict with ElementName/Name, CurrentReading, BaseUnits and UnitModifier."""
+    fans = []
+    for row in rows:
+        name = (row.get("ElementName") or row.get("Name") or "Fan").strip()
+        if row.get("BaseUnits") != RPM_UNITS and "fan" not in name.lower():
+            continue
+        reading = row.get("CurrentReading")
+        if reading is None:
+            continue
+        rpm = round(float(reading) * 10 ** (row.get("UnitModifier") or 0))
+        fans.append({"name": name, "rpm": rpm, "source": source, "hardware": hardware})
+    return fans
+
+
+def _rows(svc, query: str, fields: list[str]) -> list[dict]:
+    return [{f: getattr(item, f, None) for f in fields} for item in svc.ExecQuery(query)]
+
+
+class VendorFans:
+    """Fan speeds from maker WMI interfaces. Each probe is tried once; ones that are absent are
+    remembered so later reads cost nothing. `status` records what was found, for the device card."""
+
+    FIELDS = ["ElementName", "Name", "CurrentReading", "BaseUnits", "UnitModifier"]
+
+    def __init__(self):
+        self.status: dict[str, str] = {}
+        self._dead: set[str] = set()
+
+    def read(self) -> dict:
+        if not IS_WINDOWS:
+            return {}
+        fans = []
+        for name, probe in (("Dell Command | Monitor", self._dell), ("HP BIOS sensors", self._hp_business),
+                            ("Lenovo Gaming Zone", self._lenovo), ("Windows Win32_Fan", self._win32_fan)):
+            if name in self._dead:
+                continue
+            try:
+                found = probe()
+            except Exception as exc:
+                found, text = None, str(exc)
+                if "denied" in text.lower() or "0x80041003" in text:
+                    self.status[name] = "needs admin"
+                    continue
+            if found is None:
+                self._dead.add(name)
+                self.status[name] = "not present"
+            else:
+                self.status[name] = f"{len(found)} fan(s)" if found else "present, no fan readings"
+                fans += found
+        return {"fans": fans, "sensors": [{"hardware": f["hardware"], "type": "Fan", "name": f["name"], "value": f["rpm"],
+                                           "unit": "RPM", "source": f["source"]} for f in fans]}
+
+    def _dell(self):
+        try:
+            svc = _wmi("root\\dcim\\sysman")
+        except Exception:
+            return None
+        return numeric_fans(_rows(svc, "SELECT * FROM DCIM_NumericSensor", self.FIELDS), "Dell Command | Monitor", "Dell")
+
+    def _hp_business(self):
+        try:
+            svc = _wmi("root\\HP\\InstrumentedBIOS")
+            rows = _rows(svc, "SELECT * FROM HP_BIOSNumericSensor", self.FIELDS)
+        except Exception:
+            return None
+        return numeric_fans(rows, "HP BIOS sensors", "HP")
+
+    def _lenovo(self):
+        svc = _wmi("root\\WMI")
+        items = list(svc.ExecQuery("SELECT * FROM LENOVO_GAMEZONE_DATA"))
+        if not items:
+            return None
+        zone, fans = items[0], []
+        for i, method in enumerate(("GetFan1Speed", "GetFan2Speed")):
+            try:
+                value = zone.ExecMethod_(method).Data
+            except Exception:
+                continue
+            if value:
+                fans.append({"name": ["CPU fan", "GPU fan"][i], "rpm": int(value), "source": "Lenovo Gaming Zone",
+                             "hardware": "Lenovo (experimental)"})
+        return fans
+
+    def _win32_fan(self):
+        svc = _wmi("root\\cimv2")
+        items = list(svc.ExecQuery("SELECT Name, DesiredSpeed FROM Win32_Fan"))
+        if not items:
+            return None
+        return [{"name": item.Name or "Fan", "rpm": int(item.DesiredSpeed), "source": "Windows Win32_Fan", "hardware": "System"}
+                for item in items if item.DesiredSpeed]
 
 
 def split_fans(sensors: list[dict]) -> dict:

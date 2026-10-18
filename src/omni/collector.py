@@ -13,13 +13,13 @@ import threading
 import time
 import traceback
 
-from omni import __version__
+from omni import __version__, device
 from omni.alerts import AlertEngine
 from omni.config import Settings, home_dir
 from omni.history import History, sample_from_snapshot
 from omni.sensors.adapters import AdapterSensor
 from omni.sensors.battery import BatterySensor
-from omni.sensors.bridges import HardwareMonitorBridge, HpBios, HwinfoBridge
+from omni.sensors.bridges import HardwareMonitorBridge, HpBios, HwinfoBridge, VendorFans
 from omni.sensors.cpu import CpuSensor
 from omni.sensors.gpu import GpuSensor
 from omni.sensors.processes import ProcessSensor
@@ -56,6 +56,8 @@ class Collector:
         self._listeners: list = []
         self._commands: queue.Queue = queue.Queue()
         self._hp: HpBios | None = None
+        self._vendor = VendorFans()
+        self.device: dict | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -184,6 +186,11 @@ class Collector:
                 control = {"kind": "hp_max_fan", "max_fan": data.get("max_fan")}
             elif self._hp.error:
                 sources.append(f"HP BIOS unavailable: {self._hp.error}")
+        if self.settings.get("sensors", "vendor_wmi") and not fans:
+            data = self._vendor.read()
+            fans += data.get("fans", [])
+            sensors += data.get("sensors", [])
+            sources += sorted({f["source"] for f in data.get("fans", [])})
         for enabled, bridge in (("hwmon_bridge", HardwareMonitorBridge), ("hwinfo_bridge", HwinfoBridge)):
             if not self.settings.get("sensors", enabled):
                 continue
@@ -211,7 +218,27 @@ class Collector:
             raise RuntimeError(result["error"])
         return result["max_fan"]
 
+    def provider_status(self) -> dict:
+        """Which fan sources were tried on this machine and what each found."""
+        hp = "not present"
+        if self._hp is not None:
+            hp = f"{self._hp.fan_count} fan(s), max-fan switch" if self._hp.available else (
+                "needs admin" if self._hp.error else "not present")
+        status = {"HP OMEN / Victus BIOS": hp, **self._vendor.status}
+        names = {f["source"] for f in self.extra.get("fans", [])}
+        for label in ("LibreHardwareMonitor", "OpenHardwareMonitor", "HWiNFO"):
+            status[label] = "running" if any(s.startswith(label) for s in self.extra.get("sources", [])) else "not running"
+            if label in names:
+                status[label] += ", reports fans"
+        return status
+
     def _run_sensors(self):
+        if self.device is None:
+            try:
+                self.device = device.identify()
+            except Exception:
+                traceback.print_exc()
+                self.device = {"vendor": "Unknown", "form_factor": "PC"}
         while not self._stop.is_set():
             try:
                 self.refresh_sensors()

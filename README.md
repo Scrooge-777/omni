@@ -50,7 +50,7 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 
 | Watts per component | Windows Energy Meter (RAPL) + NVML + battery discharge | CPU package/cores/iGPU, dGPU, whole laptop on battery |
 | Every GPU | DXGI + Windows GPU counters | Intel, AMD, NVIDIA; per-engine load and memory |
-| Fans | HP WMI BIOS · LibreHardwareMonitor · HWiNFO | RPM on most PCs; Max-fan switch on HP OMEN/Victus |
+| Fans | HP WMI BIOS · Dell Command \| Monitor · HP business BIOS · Lenovo Gaming Zone · Win32_Fan · LibreHardwareMonitor · HWiNFO | RPM on most PCs; Max-fan switch on HP OMEN/Victus |
 | RAM map | `NtQuerySystemInformation` memory lists + counters | Standby by priority, modified, free, zeroed |
 
 ## Dashboard sections
@@ -59,6 +59,8 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 Fans & sensors · Battery · Memory & storage · RAM map · Network · Processes.
 **Tools:** Internet test · Power plans · Cleanup · Benchmarks (+ stress test) · History.
 **App:** Settings. Light and dark themes, animations (can be turned off), works at phone width.
+
+**Any PC:** the Fans & sensors page identifies the machine (maker, model, line, BIOS) and shows what OMNI can read and change on it, and which maker app handles the rest.
 
 **Fans on other PCs:** Windows has no standard fan API. Start LibreHardwareMonitor (as administrator)
 or HWiNFO with *Shared Memory Support* on, and OMNI shows every fan and sensor they can read.

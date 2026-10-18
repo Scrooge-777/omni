@@ -556,6 +556,24 @@ td.name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
 .result-value { font-size: 1.7rem; font-weight: 750; font-variant-numeric: tabular-nums; }
 .result-value span { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 .result .hint { margin: 0; }
+/* ---------- device profile (Fans page) */
+.device-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.device-head h2 { margin-bottom: 2px; }
+.device-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.cap-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.cap { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); }
+.cap-dot { grid-row: span 3; width: 10px; height: 10px; margin: 5px 0 0 4px; border-radius: 50%; background: var(--muted); }
+.cap[data-status="ok"] .cap-dot { background: var(--good); }
+.cap[data-status="partly"] .cap-dot { background: var(--warning); }
+.cap[data-status="needs"] .cap-dot { background: var(--serious); }
+.cap b { font-size: 0.88rem; }
+.cap-detail { color: var(--text-2); font-size: 0.8rem; overflow-wrap: anywhere; }
+.cap-how { color: var(--accent); font-size: 0.8rem; }
+.device-more { margin-top: 12px; }
+.device-more summary { cursor: pointer; color: var(--text-2); font-size: 0.85rem; margin-bottom: 8px; }
+.vendor-tools { margin-top: 12px; }
+.vendor-tools h3 { font-size: 0.85rem; margin: 0 0 6px; color: var(--text-2); }
+.result-note { grid-column: 1 / -1; padding: 10px 14px; border-radius: 10px; border-left: 4px solid var(--warning); background: var(--surface-2); color: var(--text-2); font-size: 0.85rem; }
 .dns-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 70px; gap: 12px; align-items: center; padding: 8px 0; }
 .dns-name { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.86rem; color: var(--text-2); }
 .dns-name b { color: var(--text); }

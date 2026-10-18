@@ -104,6 +104,13 @@
 
     <section class="view" id="view-fans">
       <div class="page-head"><h1>Fans &amp; sensors</h1><p class="hint" id="sensor-sources"></p></div>
+      <div class="card device-card" id="device-card">
+        <div class="device-head"><div><h2 id="device-name">Detecting this PC…</h2><p class="hint" id="device-sub"></p></div>
+          <div class="device-summary" id="device-summary"></div></div>
+        <div class="cap-list" id="cap-list"></div>
+        <details class="device-more"><summary>Fan sources checked on this PC</summary><div class="cap-list" id="provider-list"></div></details>
+        <div id="vendor-tools"></div>
+      </div>
       <div class="fan-grid" id="fan-cards"></div>
       <div class="card" id="fan-control-card" hidden><h2>Fan control</h2>
         <div class="switch-row">

@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from omni import __version__, bench, cleanup, memory, nettest, power, win
+from omni import __version__, bench, cleanup, device, memory, nettest, power, win
 from omni.collector import Collector
 from omni.config import SCHEMA, SettingsError, home_dir
 from omni.jobs import JobBusy, JobManager
@@ -99,6 +99,19 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
         return {"version": __version__, "admin": win.is_admin(), "cpu": snap.get("cpu", {}).get("name"),
                 "gpu": collector.gpu.name, "gpu_error": collector.gpu.error, "battery": collector.battery.present,
                 "sensor_sources": snap.get("sources", []), "data_dir": str(home_dir())}
+
+    @app.get("/api/device")
+    def device_profile():
+        """This machine, what OMNI can read and change on it, and the maker's own tools."""
+        profile = collector.device or {"vendor": "Detecting…", "form_factor": "PC"}
+        snap = collector.latest() or {}
+        return {
+            "device": profile,
+            "capabilities": device.capabilities(profile, snap, snap.get("sources", []), win.is_admin()),
+            "providers": collector.provider_status(),
+            "tools": [{"what": what, "how": how} for what, how in device.VENDOR_TOOLS.get(profile.get("vendor"), [])],
+            "ready": collector.device is not None,
+        }
 
     @app.get("/api/live")
     def live(seconds: int = 300):

@@ -29,7 +29,7 @@ async function api(path, options = {}) {
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!res.ok) throw new Error((data && data.detail) || `Request failed (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error((data && data.detail) || `Request failed (${res.status})`), { status: res.status });
   return data;
 }
 
@@ -271,6 +271,37 @@ function dedicatedGpu(snap) {
 function maxFanRpm() { return state.settings?.display.fan_max_rpm || 6000; }
 
 let ovGauges = null;
+const CAP_LABELS = { ok: 'Works', partly: 'Partly', needs: 'Needs setup', none: 'Not available' };
+
+function capRow(name, status, detail, how) {
+  return el('div', { class: 'cap', 'data-status': status },
+    el('span', { class: 'cap-dot', title: CAP_LABELS[status] || status }),
+    el('b', {}, name),
+    el('div', { class: 'cap-detail' }, detail || ''),
+    how ? el('div', { class: 'cap-how' }, how) : '');
+}
+
+async function loadDevice() {
+  const info = await api('/api/device');
+  const d = info.device;
+  const title = [d.vendor !== d.line ? d.vendor : null, d.model].filter(Boolean).join(' ') || 'This PC';
+  $('#device-name').textContent = title;
+  $('#device-sub').textContent = [d.form_factor, d.line && `${d.line} series`, d.model_code, d.bios && `BIOS ${d.bios}`]
+    .filter(Boolean).join(' · ') || (info.ready ? '' : 'Reading the firmware…');
+  const counts = {};
+  info.capabilities.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+  $('#device-summary').replaceChildren(...['ok', 'partly', 'needs', 'none'].filter((k) => counts[k])
+    .map((k) => el('span', { class: `badge${k === 'ok' ? ' good' : ''}` }, `${counts[k]} ${CAP_LABELS[k].toLowerCase()}`)));
+  $('#cap-list').replaceChildren(...info.capabilities.map((c) => capRow(c.area, c.status, c.detail, c.how)));
+  $('#provider-list').replaceChildren(...Object.entries(info.providers).map(([name, status]) => {
+    const kind = /fan\(s\)|reports fans/.test(status) ? 'ok' : /admin|running$/.test(status) && !/not running/.test(status) ? 'partly' : 'none';
+    return capRow(name, kind, status);
+  }));
+  $('#vendor-tools').replaceChildren(...(info.tools.length ? [el('div', { class: 'vendor-tools' },
+    el('h3', {}, `What you can change on this ${d.vendor} and where`),
+    el('div', { class: 'cap-list' }, ...info.tools.map((t) => capRow(t.what, 'partly', t.how))))] : []));
+}
+
 const VIEWS = {
   overview: {
     key: () => 'static',
@@ -472,6 +503,10 @@ const VIEWS = {
     },
     update(snap) {
       const fans = snap.fans || [];
+      if (!this.deviceAt || Date.now() - this.deviceAt > 15000) {
+        this.deviceAt = Date.now();
+        loadDevice().catch(() => { this.deviceAt = 0; });
+      }
       fans.forEach((f, i) => this.fans[i]?.set(f.rpm, maxFanRpm(), `${f.source}${f.hardware && f.hardware !== 'Laptop' ? ` · ${f.hardware}` : ''}`));
       const sources = (snap.sources || []).join(' · ');
       $('#sensor-sources').textContent = sources ? `Sources: ${sources}` : 'No extra sensor sources found.';
@@ -749,8 +784,10 @@ function renderSpeedResult(r, partial = false) {
     cell('Download', r.download_mbps, 'Mbps'), cell('Upload', r.upload_mbps, 'Mbps'),
     cell('Latency', r.latency_ms, 'ms', r.jitter_ms != null ? el('div', { class: 'hint' }, `Jitter ${r.jitter_ms} ms`) : ''),
     cell('Under load', r.loaded_latency_ms, 'ms', grade ? el('span', { class: `badge ${'AB'.includes(grade[0]) ? 'good' : 'bad'}` }, `Bufferbloat ${grade}`) : ''),
-    cell('Server', r.colo ? `Cloudflare ${r.colo}` : null, r.country || ''),
-    cell('Data used', r.download_bytes || r.upload_bytes ? fmt.bytes((r.download_bytes || 0) + (r.upload_bytes || 0)) : null, ''));
+    cell('Server', r.download_server || null, '', r.upload_server && r.upload_server !== r.download_server
+      ? el('div', { class: 'hint' }, `Upload: ${r.upload_server}`) : ''),
+    cell('Data used', r.download_bytes || r.upload_bytes ? fmt.bytes((r.download_bytes || 0) + (r.upload_bytes || 0)) : null, ''),
+    ...(r.notes || []).map((note) => el('div', { class: 'result-note reveal' }, note)));
 }
 
 async function startSpeedTest() {
@@ -765,6 +802,7 @@ async function startSpeedTest() {
   const phases = $$('#speed-phases span');
   try {
     const job = await runJob('/api/net/speedtest', { parts }, (j) => {
+      if (/Connecting|Finding/.test(j.message)) net.gauge.set(null, j.message);
       net.job = j;
       const phase = /latency/i.test(j.message) ? 'latency' : /download/i.test(j.message) ? 'download' : /upload/i.test(j.message) ? 'upload' : null;
       phases.forEach((p) => p.classList.toggle('active', p.dataset.phase === phase));
@@ -773,7 +811,7 @@ async function startSpeedTest() {
         const ms = Number((j.message.match(/([\d.]+) ms/) || [])[1]);
         net.gauge.set(null, Number.isFinite(ms) ? `Latency ${ms} ms` : 'Measuring latency');
       } else if (j.live != null) net.gauge.set(j.live, phase === 'upload' ? 'Upload' : 'Download');
-    }, 300);
+    }, 300, 'speedtest');
     phases.forEach((p) => p.classList.remove('active'));
     if (job.status === 'failed') { $('#speed-status').textContent = `Failed: ${job.error}`; net.gauge.set(null, 'Failed'); }
     else if (job.result) {
@@ -851,8 +889,17 @@ async function applyTweak(name, value) {
 
 // ------------------------------------------------------------------ jobs (benchmarks, stress, cleanup)
 
-async function runJob(startPath, body, onUpdate, pollMs = 700) {
-  let job = await api(startPath, { method: 'POST', body });
+async function runJob(startPath, body, onUpdate, pollMs = 700, kind = null) {
+  let job;
+  try {
+    job = await api(startPath, { method: 'POST', body });
+  } catch (err) {
+    // Same kind of job already running (e.g. started in another tab, or before a reload):
+    // follow it instead of failing with "already running".
+    const current = err.status === 409 ? await api('/api/jobs/current') : null;
+    if (!current || (kind && current.kind !== kind)) throw err;
+    job = current;
+  }
   onUpdate(job);
   while (job.status === 'running') {
     await new Promise((r) => setTimeout(r, pollMs));
@@ -1046,11 +1093,12 @@ const SETTING_TEXT = {
   sensors: ['Sensors & fans', {
     interval_s: ['Fan / sensor refresh (s)', ''],
     hp_bios: ['HP OMEN / Victus BIOS', 'Fan speeds and max-fan switch on HP gaming laptops (needs administrator).'],
+    vendor_wmi: ['Maker sensors (Dell, HP business, Lenovo)', 'Fan speeds from Dell Command | Monitor, HP EliteBook/ProBook/ZBook BIOS sensors, Lenovo Legion/LOQ (experimental) and Win32_Fan.'],
     hwmon_bridge: ['LibreHardwareMonitor bridge', 'Reads every sensor while LibreHardwareMonitor or OpenHardwareMonitor runs.'],
     hwinfo_bridge: ['HWiNFO bridge', 'Reads every sensor while HWiNFO runs with Shared Memory Support on.'],
   }],
   network: ['Internet test', {
-    speedtest_server: ['Speed-test server', 'Must offer Cloudflare-style /__down and /__up endpoints.'],
+    speedtest_server: ['Speed-test server', 'auto = Cloudflare, or the nearest mirror if Cloudflare is busy. A custom address must offer Cloudflare-style /__down and /__up.'],
     streams: ['Parallel streams', 'More streams fill fast lines; 4 suits most connections.'],
     seconds: ['Seconds per direction', 'Longer tests are steadier but use more data.'],
   }],
