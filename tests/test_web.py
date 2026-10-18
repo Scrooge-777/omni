@@ -1,5 +1,6 @@
 """API tests against a fake collector, so they run anywhere (CI included) without real sensors."""
 
+import re
 import time
 
 import pytest
@@ -54,6 +55,15 @@ def test_page_embeds_token_and_csp(client):
     assert res.status_code == 200
     assert TOKEN in res.text
     assert "script-src 'self'" in res.headers["content-security-policy"]
+
+
+def test_no_stale_assets(client):
+    """Upgrades must never run cached old scripts against a new page (UI stuck on "Connecting")."""
+    res = client.get("/")
+    assert res.headers["cache-control"] == "no-store"  # the page carries this run's token
+    assert re.search(r'/static/app\.js\?v=[0-9a-f]{10}"', res.text)
+    assert re.search(r'/static/charts\.js\?v=[0-9a-f]{10}"', res.text)
+    assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
 
 
 def test_api_requires_token(client):

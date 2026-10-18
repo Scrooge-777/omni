@@ -9,7 +9,9 @@ browser can still send requests to localhost):
 """
 
 import asyncio
+import hashlib
 import json
+import re
 import secrets
 import time
 from pathlib import Path
@@ -29,8 +31,20 @@ ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
 RANGES = {"15m": 900, "1h": 3600, "6h": 6 * 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
 
 
+def asset_version() -> str:
+    """Hash of the static files, appended to their URLs so an upgrade never runs a stale
+    cached script against a new page (that left the UI stuck on "Connecting")."""
+    digest = hashlib.sha1()
+    for path in sorted(STATIC.iterdir()):
+        if path.is_file():
+            digest.update(path.name.encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:10]
+
+
 def create_app(collector: Collector, token: str | None = None) -> FastAPI:
     token = token or secrets.token_urlsafe(24)
+    version = asset_version()
     settings = collector.settings
     jobs = JobManager(on_done=lambda job: collector.history.add_bench_result(job.kind, job.result)
                       if job.kind.startswith("bench") or job.kind == "speedtest" else None)
@@ -49,6 +63,10 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
                 request.headers.get("x-omni-token", ""), token):
             return JSONResponse({"detail": "Missing or wrong token"}, status_code=401)
         response = await call_next(request)
+        if request.url.path == "/":
+            response.headers["Cache-Control"] = "no-store"  # carries this run's token
+        elif request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"  # always revalidate (cheap: ETag)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
@@ -64,6 +82,7 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index():
         html = (STATIC / "index.html").read_text(encoding="utf-8")
+        html = re.sub(r'(/static/[\w.-]+\.(?:js|css|svg))"', rf'\1?v={version}"', html)
         return html.replace("{{TOKEN}}", token).replace("{{VERSION}}", __version__)
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")

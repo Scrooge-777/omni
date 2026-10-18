@@ -22,15 +22,35 @@ def _port_free(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) != 0
 
 
+def _omni_running_on(port: int) -> bool:
+    """True if an OMNI dashboard already answers on this port."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2) as response:
+            return b'name="omni-token"' in response.read(4096)
+    except OSError:
+        return False
+
+
 def cmd_web(args):
+    settings = Settings()
+    port = args.port or settings.get("general", "web_port")
+    # A second copy would poll every sensor twice and write the same history database;
+    # reuse the running one instead (e.g. after double-clicking OMNI.bat again).
+    if _omni_running_on(port):
+        url = f"http://localhost:{port}/"
+        console.print(f"OMNI is already running: {url}")
+        if not args.no_browser:
+            webbrowser.open(url)
+        return
+
     import uvicorn
 
     from omni.collector import Collector
     from omni.web.app import create_app
 
-    collector = Collector()
-    settings = collector.settings
-    port = args.port or settings.get("general", "web_port")
+    collector = Collector(settings)
     for candidate in range(port, port + 10):
         if _port_free(candidate):
             port = candidate

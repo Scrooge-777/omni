@@ -507,6 +507,10 @@ td.name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
 .topbar .menu-btn { display: none; }
 @media (max-width: 860px) { .topbar .menu-btn { display: grid; } }
 .btn .icon { margin-left: -2px; }
+.fatal {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 60; max-width: min(640px, 92vw);
+  background: var(--critical); color: #fff; padding: 12px 18px; border-radius: 12px; box-shadow: var(--shadow-hover);
+}
 .more-row { text-align: center; }
 .more-row:hover { background: none !important; }
 
