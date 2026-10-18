@@ -12,12 +12,18 @@ const Charts = (() => {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  function niceMax(value) {
-    if (value <= 0) return 1;
-    const mag = Math.pow(10, Math.floor(Math.log10(value)));
-    for (const step of [1, 2, 2.5, 5, 10]) if (value <= step * mag) return step * mag;
-    return 10 * mag;
+  // Smallest "nice" tick step (1, 2, 2.5 or 5 x 10^k) that covers value in at most 5 ticks.
+  function niceScale(value) {
+    if (!(value > 0)) return { max: 1, ticks: 4 };
+    for (let mag = Math.pow(10, Math.floor(Math.log10(value / 5))); ; mag *= 10) {
+      for (const m of [1, 2, 2.5, 5]) {
+        const step = m * mag;
+        const ticks = Math.ceil(value / step);
+        if (ticks <= 5) return { max: step * Math.max(ticks, 2), ticks: Math.max(ticks, 2) };
+      }
+    }
   }
+  const niceMax = (value) => niceScale(value).max;
 
   class LineChart {
     // series: [{key, label, color: '--series-1'}]; opts: {min, max, format(v), signed}
@@ -78,15 +84,18 @@ const Charts = (() => {
 
       const fmt = opts.format || ((v) => v.toFixed(0));
       let min = opts.min ?? Math.min(0, ...values);
-      let max = opts.max ?? niceMax(Math.max(...values) * 1.1);
+      let max = opts.max;
+      let ticksY = 4;
+      if (max == null) ({ max, ticks: ticksY } = niceScale(Math.max(...values) * 1.05 - min));
       if (opts.signed) {
-        const extent = niceMax(Math.max(...values.map(Math.abs)) * 1.1);
-        min = -extent; max = extent;
+        const extent = niceMax(Math.max(...values.map(Math.abs)) * 1.05);
+        min = -extent; max = extent; ticksY = 4;
       }
       if (max === min) max = min + 1;
+      const tickValues = Array.from({ length: ticksY + 1 }, (_, i) => min + ((max - min) * i) / ticksY);
 
       ctx.font = '11px system-ui, "Segoe UI", sans-serif';
-      const labelW = Math.max(ctx.measureText(fmt(max)).width, ctx.measureText(fmt(min)).width) + 10;
+      const labelW = Math.max(...tickValues.map((v) => ctx.measureText(fmt(v)).width)) + 10;
       const pad = { l: labelW, r: 8, t: 6, b: 20 };
       const plotW = width - pad.l - pad.r, plotH = height - pad.t - pad.b;
       const t0 = data[0].ts, t1 = data[data.length - 1].ts, span = Math.max(1, t1 - t0);
@@ -99,8 +108,7 @@ const Charts = (() => {
       ctx.lineWidth = 1;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      for (let i = 0; i <= 4; i++) {
-        const v = min + ((max - min) * i) / 4;
+      for (const v of tickValues) {
         const yy = Math.round(y(v)) + 0.5;
         ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(width - pad.r, yy); ctx.stroke();
         ctx.fillText(fmt(v), pad.l - 6, yy);

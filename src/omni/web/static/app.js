@@ -13,6 +13,7 @@ const state = {
   schema: null,
   view: 'overview',
   charts: {},
+  built: {},
   procSort: 'cpu',
   historyRange: '1h',
   stressTarget: 'cpu',
@@ -34,11 +35,14 @@ async function api(path, options = {}) {
 
 let toastTimer;
 function toast(message) {
-  const el = $('#toast');
-  el.textContent = message;
-  el.hidden = false;
+  const node = $('#toast');
+  node.textContent = message;
+  node.hidden = false;
+  node.classList.remove('show');
+  void node.offsetWidth; // restart the entrance animation
+  node.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 4000);
+  toastTimer = setTimeout(() => { node.hidden = true; }, 4000);
 }
 
 function el(tag, attrs = {}, ...children) {
@@ -70,6 +74,7 @@ const fmt = {
     return unit('temperature') === 'F' ? `${(c * 9 / 5 + 32).toFixed(digits)} °F` : `${c.toFixed(digits)} °C`;
   },
   tempValue(c) { return c == null ? null : unit('temperature') === 'F' ? c * 9 / 5 + 32 : c; },
+  tempUnit() { return unit('temperature') === 'F' ? '°F' : '°C'; },
   tempAxis(v) { return `${v.toFixed(0)}°`; },
   bytes(n, digits = 1) {
     if (n == null) return '—';
@@ -85,9 +90,11 @@ const fmt = {
     if (mwh == null) return '—';
     return unit('energy') === 'mWh' ? `${Math.round(mwh).toLocaleString()} mWh` : `${(mwh / 1000).toFixed(1)} Wh`;
   },
+  wh(wh) { return wh == null ? '—' : unit('energy') === 'mWh' ? `${Math.round(wh * 1000).toLocaleString()} mWh` : `${wh.toFixed(wh < 1 ? 3 : 2)} Wh`; },
   watts(w, digits = 1) { return w == null ? '—' : `${w.toFixed(digits)} W`; },
   freq(mhz) { return mhz == null ? '—' : mhz >= 1000 ? `${(mhz / 1000).toFixed(2)} GHz` : `${Math.round(mhz)} MHz`; },
   pct(v, digits = 0) { return v == null ? '—' : `${v.toFixed(digits)} %`; },
+  rpm(v) { return v == null ? '—' : `${Math.round(v).toLocaleString()} RPM`; },
   duration(s) {
     if (s == null || s < 0) return '—';
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -95,32 +102,38 @@ const fmt = {
   },
   time(ts) { return new Date(ts * 1000).toLocaleString(); },
 };
+const num = (digits = 0) => (v) => (v == null ? '—' : v.toFixed(digits));
+const wattsAxis = (v) => `${Math.abs(v) < 10 && v % 1 ? v.toFixed(1) : v.toFixed(0)} W`;
+const pctAxis = (v) => `${v.toFixed(0)}%`;
 
 // ------------------------------------------------------------------ charts
 
-// Watts: one decimal for small values so axis ticks like 0.5 W don't all round to "1 W".
-const wattsAxis = (v) => `${Math.abs(v) < 10 && v % 1 ? v.toFixed(1) : v.toFixed(0)} W`;
-
 const CHARTS = {
-  usage: [[['cpu_pct', 'CPU'], ['gpu_pct', 'GPU'], ['ram_pct', 'Memory']], { min: 0, max: 100, format: (v) => `${v.toFixed(0)}%` }],
+  usage: [[['cpu_pct', 'CPU'], ['gpu_pct', 'GPU'], ['ram_pct', 'Memory']], { min: 0, max: 100, format: pctAxis }],
   temps: [[['cpu_temp_c', 'CPU'], ['gpu_temp_c', 'GPU']], { format: fmt.tempAxis, temp: true }],
-  'cpu-usage': [[['cpu_pct', 'CPU']], { min: 0, max: 100, format: (v) => `${v.toFixed(0)}%` }],
+  'ov-power': [[['cpu_w', 'CPU package'], ['gpu_w', 'Dedicated GPU'], ['system_w', 'Whole laptop (battery)']], { min: 0, format: wattsAxis }],
+  'cpu-usage': [[['cpu_pct', 'CPU']], { min: 0, max: 100, format: pctAxis }],
   'cpu-clock': [[['cpu_mhz', 'Clock']], { format: (v) => `${(v / 1000).toFixed(1)} GHz` }],
   'cpu-temp': [[['cpu_temp_c', 'CPU']], { format: fmt.tempAxis, temp: true }],
-  'gpu-usage': [[['gpu_pct', 'GPU']], { min: 0, max: 100, format: (v) => `${v.toFixed(0)}%` }],
-  'gpu-power': [[['gpu_w', 'Power']], { format: wattsAxis }],
+  'cpu-power': [[['cpu_w', 'Package'], ['cpu_cores_w', 'Cores'], ['igpu_w', 'Integrated GPU']], { min: 0, format: wattsAxis }],
+  'gpu-usage': [[['gpu_pct', 'GPU']], { min: 0, max: 100, format: pctAxis }],
+  'gpu-power': [[['gpu_w', 'Power']], { min: 0, format: wattsAxis, emptyText: 'No power readings: the GPU is asleep (≈0 W) or paused on battery.' }],
   'gpu-temp': [[['gpu_temp_c', 'GPU']], { format: fmt.tempAxis, temp: true }],
-  'batt-pct': [[['batt_pct', 'Charge']], { min: 0, max: 100, format: (v) => `${v.toFixed(0)}%` }],
+  energy: [[['cpu_w', 'CPU package'], ['cpu_cores_w', 'CPU cores'], ['igpu_w', 'Integrated GPU'], ['gpu_w', 'Dedicated GPU']], { min: 0, format: wattsAxis }],
+  'batt-pct': [[['batt_pct', 'Charge']], { min: 0, max: 100, format: pctAxis }],
   'batt-power': [[['batt_w', 'Battery power']], { signed: true, format: wattsAxis }],
   'batt-capacity': [[['full_wh', 'Full charge'], ['design_wh', 'Design']], {
     min: 0, format: (v) => `${v.toFixed(0)} Wh`, emptyText: 'Needs readings from at least two days. OMNI records one per day.' }],
-  'disk-io': [[['disk_read_bps', 'Read'], ['disk_write_bps', 'Write']], { format: (v) => fmt.rate(v) }],
-  'net-io': [[['net_down_bps', 'Download'], ['net_up_bps', 'Upload']], { format: (v) => fmt.rate(v) }],
+  'disk-io': [[['disk_read_bps', 'Read'], ['disk_write_bps', 'Write']], { min: 0, format: (v) => fmt.rate(v) }],
+  'net-io': [[['net_down_bps', 'Download'], ['net_up_bps', 'Upload']], { min: 0, format: (v) => fmt.rate(v) }],
   stress: [[['cpu_temp_c', 'CPU'], ['gpu_temp_c', 'GPU']], { format: fmt.tempAxis, temp: true }],
-  'h-usage': [[['cpu_pct', 'CPU'], ['gpu_pct', 'GPU'], ['ram_pct', 'Memory']], { min: 0, max: 100, format: (v) => `${v.toFixed(0)}%` }],
+  'h-usage': [[['cpu_pct', 'CPU'], ['gpu_pct', 'GPU'], ['ram_pct', 'Memory']], { min: 0, max: 100, format: pctAxis }],
   'h-temps': [[['cpu_temp_c', 'CPU'], ['gpu_temp_c', 'GPU']], { format: fmt.tempAxis, temp: true }],
-  'h-batt': [[['batt_pct', 'Charge']], { min: 0, max: 100, format: (v) => `${v.toFixed(0)}%` }],
-  'h-gpu-power': [[['gpu_w', 'Power']], { format: wattsAxis }],
+  'h-power': [[['cpu_w', 'CPU package'], ['gpu_w', 'Dedicated GPU'], ['system_w', 'Whole laptop (battery)']], { min: 0, format: wattsAxis }],
+  'h-fans': [[['fan_rpm', 'Fastest fan']], { min: 0, format: (v) => `${(v / 1000).toFixed(1)}k` , emptyText: 'No fan readings recorded yet.' }],
+  'h-batt': [[['batt_pct', 'Charge']], { min: 0, max: 100, format: pctAxis }],
+  'speed-history': [[['download_mbps', 'Download'], ['upload_mbps', 'Upload']], { min: 0, format: (v) => `${v.toFixed(0)} Mbps`, emptyText: 'Run two or more speed tests to see a trend.' }],
+  'h-gpu-power': [[['gpu_w', 'Power']], { min: 0, format: wattsAxis }],
 };
 
 function chart(name) {
@@ -145,13 +158,19 @@ function setChart(name, points) {
 }
 
 function compact(snap) {
-  const b = snap.battery || {}, g = snap.gpu || {}, s = snap.storage || {}, n = snap.network || {};
-  return {
+  const b = snap.battery || {}, g = snap.gpu || {}, s = snap.storage || {}, n = snap.network || {}, p = snap.power || {};
+  const fans = (snap.fans || []).map((f) => f.rpm).filter((v) => v != null);
+  // Windows' counter keeps reporting dGPU load while NVML is paused or the GPU sleeps.
+  const dgpu = dedicatedGpu(snap);
+  const point = {
     ts: snap.ts, cpu_pct: snap.cpu.usage_pct, cpu_temp_c: snap.cpu.temp_c, cpu_mhz: snap.cpu.clock_mhz,
-    ram_pct: snap.memory.usage_pct, gpu_pct: g.util_pct, gpu_temp_c: g.temp_c, gpu_w: g.power_w,
+    ram_pct: snap.memory.usage_pct, gpu_pct: g.util_pct ?? dgpu?.load_pct ?? null, gpu_temp_c: g.temp_c, gpu_w: g.power_w,
     batt_pct: b.percent, batt_w: b.power_w, disk_read_bps: s.read_bps, disk_write_bps: s.write_bps,
-    net_down_bps: n.down_bps, net_up_bps: n.up_bps,
+    net_down_bps: n.down_bps, net_up_bps: n.up_bps, cpu_w: p.cpu_package_w, cpu_cores_w: p.cpu_cores_w,
+    igpu_w: p.igpu_w, system_w: p.system_w, fan_rpm: fans.length ? Math.max(...fans) : null,
   };
+  (snap.fans || []).slice(0, 4).forEach((f, i) => { point[`fan_${i}`] = f.rpm; });
+  return point;
 }
 
 // ------------------------------------------------------------------ live connection
@@ -179,14 +198,6 @@ function connect() {
 
 // ------------------------------------------------------------------ navigation
 
-const ON_SHOW = {
-  power: loadPower,
-  bench: loadBenchHistory,
-  history: loadHistory,
-  settings: renderSettings,
-  battery: loadCapacity,
-};
-
 function showView(name) {
   if (!$(`#view-${name}`)) name = 'overview';
   state.view = name;
@@ -194,7 +205,7 @@ function showView(name) {
   $$('.sidebar button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   $('#sidebar').classList.remove('open');
   if (location.hash !== `#${name}`) history.replaceState(null, '', `#${name}`);
-  ON_SHOW[name]?.();
+  VIEWS[name]?.show?.();
   render();
 }
 
@@ -204,158 +215,367 @@ function render() {
   const snap = state.snap;
   if (!snap) return;
   renderAlerts(snap.alerts || []);
-  const renderer = RENDERERS[state.view];
-  if (renderer) renderer(snap);
+  renderTopbar(snap);
+  const view = VIEWS[state.view];
+  if (!view?.update) return;
+  if (view.build && state.built[state.view] !== view.key?.(snap)) {
+    view.build(snap);
+    state.built[state.view] = view.key?.(snap);
+  }
+  view.update(snap);
 }
 
 function renderAlerts(alerts) {
-  $('#alerts').replaceChildren(...alerts.map((a) => el('div', { class: `alert ${a.level}` },
+  const box = $('#alerts');
+  const key = alerts.map((a) => a.key + a.message).join('|');
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren(...alerts.map((a) => el('div', { class: `alert ${a.level}` },
     el('span', { class: 'icon', 'aria-hidden': 'true' }, a.level === 'info' ? 'ℹ' : '⚠'),
     el('span', {}, a.message))));
 }
 
-function tile(label, value, sub, view, key, color = '--series-1', max = null) {
-  const canvas = el('canvas');
-  const node = el('button', { class: 'tile', onclick: () => showView(view) },
-    el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), el('div', { class: 'sub' }, sub), canvas);
-  requestAnimationFrame(() => Charts.sparkline(canvas, state.live.slice(-120).map((p) => p[key]), color, 0, max));
-  return node;
+function renderTopbar(snap) {
+  const p = snap.power || {};
+  const parts = [`CPU ${fmt.pct(snap.cpu.usage_pct)}`, fmt.temp(snap.cpu.temp_c)];
+  if (p.cpu_package_w != null) parts.push(fmt.watts(p.cpu_package_w, 0));
+  const fans = (snap.fans || []).map((f) => f.rpm).filter((v) => v != null);
+  if (fans.length) parts.push(fmt.rpm(Math.max(...fans)));
+  $('#topbar-stats').textContent = parts.join('  ·  ');
 }
 
-const RENDERERS = {
-  overview(snap) {
-    const { cpu, gpu, battery: b, memory: m, storage: s, network: n } = snap;
-    const tiles = [
-      tile('CPU', fmt.pct(cpu.usage_pct), `${fmt.temp(cpu.temp_c)} · ${fmt.freq(cpu.clock_mhz)}`, 'cpu', 'cpu_pct', '--series-1', 100),
-      !gpu.available ? tile('GPU', '—', gpu.error || 'Not available', 'gpu', 'gpu_pct')
-        : gpu.paused ? tile('GPU', 'Paused', 'Not read on battery so it can sleep', 'gpu', 'gpu_pct', '--series-1', 100)
-        : gpu.asleep ? tile('GPU', 'Sleeping', `Powered down · ${fmt.temp(gpu.temp_c)}`, 'gpu', 'gpu_pct', '--series-1', 100)
-        : tile('GPU', fmt.pct(gpu.util_pct), `${fmt.temp(gpu.temp_c)} · ${fmt.watts(gpu.power_w)}`, 'gpu', 'gpu_pct', '--series-1', 100),
-      b.present
-        ? tile('Battery', fmt.pct(b.percent), `${b.state} · ${fmt.watts(Math.abs(b.power_w || 0))}${b.time_left_s ? ` · ${fmt.duration(b.time_left_s)}` : ''}`, 'battery', 'batt_pct', '--series-1', 100)
-        : tile('Battery', '—', 'No battery', 'battery', 'batt_pct'),
-      tile('Memory', fmt.pct(m.usage_pct), `${fmt.bytes(m.used)} of ${fmt.bytes(m.total)}`, 'storage', 'ram_pct', '--series-1', 100),
-      tile('Disk', fmt.rate((s.read_bps || 0) + (s.write_bps || 0)), `Read ${fmt.rate(s.read_bps)} · Write ${fmt.rate(s.write_bps)}`, 'storage', 'disk_read_bps'),
-      tile('Network', fmt.rate(n.down_bps), `Down ${fmt.rate(n.down_bps)} · Up ${fmt.rate(n.up_bps)}`, 'network', 'net_down_bps'),
-    ];
-    $('#tiles').replaceChildren(...tiles);
-    setChart('usage', state.live);
-    setChart('temps', state.live);
+function dedicatedGpu(snap) {
+  return (snap.gpus || []).find((g) => !g.integrated) || (snap.gpus || [])[0] || null;
+}
+
+function maxFanRpm() { return state.settings?.display.fan_max_rpm || 6000; }
+
+let ovGauges = null;
+const VIEWS = {
+  overview: {
+    key: () => 'static',
+    build(snap) {
+      const go = (view) => () => showView(view);
+      ovGauges = {
+        cpu: new UI.Gauge({ label: 'CPU load', unit: '%', max: 100, format: num(0), warn: 85, onClick: go('cpu') }),
+        cpuTemp: new UI.Gauge({ label: 'CPU temperature', unit: fmt.tempUnit(), max: 105, format: num(0), warn: 85, danger: 95, onClick: go('cpu') }),
+        cpuW: new UI.Gauge({ label: 'CPU power', unit: 'W', max: 60, format: num(1), onClick: go('energy') }),
+        gpu: new UI.Gauge({ label: 'GPU load', unit: '%', max: 100, format: num(0), warn: 85, onClick: go('gpu') }),
+        gpuTemp: new UI.Gauge({ label: 'GPU temperature', unit: fmt.tempUnit(), max: 100, format: num(0), warn: 80, danger: 87, onClick: go('gpu') }),
+        mem: new UI.Gauge({ label: 'Memory', unit: '%', max: 100, format: num(0), warn: 85, onClick: go('storage') }),
+        fan: new UI.Gauge({ label: 'Fans', unit: 'RPM', max: maxFanRpm(), format: (v) => (v == null ? '—' : Math.round(v).toLocaleString()), onClick: go('fans') }),
+        batt: new UI.Gauge({ label: 'Battery', unit: '%', max: 100, format: num(0), onClick: go('battery') }),
+      };
+      $('#overview-gauges').replaceChildren(...Object.values(ovGauges).map((g) => g.el));
+      $('#overview-io').replaceChildren(...['Disk read', 'Disk write', 'Download', 'Upload'].map((label) =>
+        el('div', { class: 'mini-stat' }, el('div', { class: 'mini-label' }, label), el('div', { class: 'mini-value' }, '—'))));
+      this.cpuWMax = 60;
+    },
+    update(snap) {
+      const { cpu, battery: b, memory: m, storage: s, network: n, power: p = {} } = snap;
+      const g = dedicatedGpu(snap);
+      $('#overview-machine').textContent = [cpu.name, g && g.name].filter(Boolean).join(' · ');
+      ovGauges.cpu.set(cpu.usage_pct, fmt.freq(cpu.clock_mhz));
+      ovGauges.cpuTemp.set(fmt.tempValue(cpu.temp_c), cpu.temp_c >= 95 ? 'Very hot' : cpu.temp_c >= 85 ? 'Hot' : 'Normal');
+      // Grow the power gauge's scale to the highest reading seen, rounded to a tidy number.
+      if ((p.cpu_package_w || 0) > this.cpuWMax) this.cpuWMax = Math.ceil(p.cpu_package_w / 20) * 20;
+      ovGauges.cpuW.set(p.cpu_package_w, p.cpu_cores_w != null ? `Cores ${fmt.watts(p.cpu_cores_w)}` : 'Not reported', this.cpuWMax);
+      if (!g) ovGauges.gpu.set(null, 'No GPU found');
+      else if (g.asleep) ovGauges.gpu.set(0, 'Sleeping');
+      else ovGauges.gpu.set(g.load_pct, g.power_w != null ? fmt.watts(g.power_w) : g.name.replace(/\(R\)|NVIDIA GeForce |Laptop GPU/g, '').trim());
+      const gpuTemp = snap.gpu.available ? snap.gpu.temp_c : null;
+      ovGauges.gpuTemp.set(fmt.tempValue(gpuTemp), snap.gpu.paused ? 'Paused on battery' : gpuTemp == null ? 'Not reported' : 'Dedicated GPU');
+      ovGauges.mem.set(m.usage_pct, `${fmt.bytes(m.used)} of ${fmt.bytes(m.total)}`);
+      const fans = (snap.fans || []).filter((f) => f.rpm != null);
+      if (fans.length) ovGauges.fan.set(Math.max(...fans.map((f) => f.rpm)), `${fans.length} fan${fans.length > 1 ? 's' : ''}`, maxFanRpm());
+      else ovGauges.fan.set(null, 'No fan sensor');
+      if (b.present) ovGauges.batt.set(b.percent, b.state === 'discharging' && b.time_left_s ? `${fmt.duration(b.time_left_s)} left` : b.state);
+      else ovGauges.batt.set(null, 'No battery');
+      const io = $$('#overview-io .mini-value');
+      [s.read_bps, s.write_bps, n.down_bps, n.up_bps].forEach((v, i) => UI.tween(io[i], v, fmt.rate));
+      setChart('usage', state.live);
+      setChart('temps', state.live);
+      setChart('ov-power', state.live);
+    },
   },
 
-  cpu(snap) {
-    const c = snap.cpu;
-    kv($('#cpu-kv'), [
-      ['Processor', c.name], ['Cores / threads', `${c.cores} / ${c.threads}`], ['Usage', fmt.pct(c.usage_pct, 1)],
-      ['Clock now', fmt.freq(c.clock_mhz)], ['Base clock', fmt.freq(c.base_mhz)], ['Temperature', fmt.temp(c.temp_c, 1)],
-      ...Object.entries(c.zones || {}).map(([zone, t]) => [`Sensor ${zone}`, fmt.temp(t, 1)]),
-    ]);
-    $('#cores').replaceChildren(...c.per_core_pct.map((v, i) => el('div', { class: 'core' },
-      `#${i} · ${v.toFixed(0)}%`, el('div', { class: `bar${v > 90 ? ' warn' : ''}` }, el('span', { style: `width:${v}%` })))));
-    setChart('cpu-usage', state.live);
-    setChart('cpu-clock', state.live);
-    setChart('cpu-temp', state.live);
+  cpu: {
+    key: (snap) => `${snap.cpu.threads}`,
+    build(snap) {
+      const c = snap.cpu;
+      this.gauges = {
+        load: new UI.Gauge({ label: 'Load', unit: '%', max: 100, format: num(0), warn: 85 }),
+        clock: new UI.Gauge({ label: c.hybrid ? 'P-core clock' : 'Clock', unit: 'GHz', max: 6000, format: (v) => (v == null ? '—' : (v / 1000).toFixed(2)) }),
+        temp: new UI.Gauge({ label: 'Temperature', unit: fmt.tempUnit(), max: 105, format: num(0), warn: 85, danger: 95 }),
+        power: new UI.Gauge({ label: 'Package power', unit: 'W', max: 60, format: num(1) }),
+      };
+      this.powerMax = 60;
+      $('#cpu-gauges').replaceChildren(...Object.values(this.gauges).map((g) => g.el));
+      this.cyl = [];
+      const groups = c.hybrid
+        ? [['P', `Performance cores · ${c.p_cores} cores, ${c.per_thread.filter((t) => t.type === 'P').length} threads`],
+          ['E', `Efficiency cores · ${c.e_cores} cores, ${c.per_thread.filter((t) => t.type === 'E').length} threads`]]
+        : [[null, `${c.cores} cores · ${c.threads} threads`]];
+      $('#cpu-cylinders').replaceChildren(...groups.map(([type, title]) => {
+        const row = el('div', { class: 'cyl-row' });
+        for (const t of c.per_thread.filter((x) => x.type === type)) {
+          const cyl = new UI.Cylinder(`#${t.id}`, type === 'E' ? 'e-core' : type === 'P' ? 'p-core' : '');
+          this.cyl[t.id] = cyl;
+          row.append(cyl.el);
+        }
+        return el('div', { class: 'cyl-group' }, el('h3', {}, title), row);
+      }));
+      $('#cpu-thread-hint').textContent = c.hybrid
+        ? 'Fill = load. Blue = performance cores, aqua = efficiency cores; the fill turns amber above 60 % and orange above 90 %. Windows does not report an E-core base clock, so E-cores show speed relative to their base (×) instead of MHz.'
+        : 'Fill = load (amber above 60 %, orange above 90 %), caption = live clock.';
+    },
+    update(snap) {
+      const c = snap.cpu, p = snap.power || {};
+      $('#cpu-name').textContent = c.name;
+      this.gauges.load.set(c.usage_pct, `${c.cores} cores · ${c.threads} threads`);
+      this.gauges.clock.set(c.clock_mhz, `Base ${fmt.freq(c.base_mhz)}`);
+      this.gauges.temp.set(fmt.tempValue(c.temp_c), Object.keys(c.zones || {}).length ? `${Object.keys(c.zones).length} sensor(s)` : 'Not reported');
+      if ((p.cpu_package_w || 0) > this.powerMax) this.powerMax = Math.ceil(p.cpu_package_w / 20) * 20;
+      this.gauges.power.set(p.cpu_package_w, p.cpu_package_w == null ? 'Not reported by Windows' : `Cores ${fmt.watts(p.cpu_cores_w)}`, this.powerMax);
+      for (const t of c.per_thread) {
+        const caption = t.clock_mhz ? `${(t.clock_mhz / 1000).toFixed(1)} GHz` : t.perf_pct ? `×${(t.perf_pct / 100).toFixed(1)}` : '';
+        this.cyl[t.id]?.set(t.load_pct, caption, `Thread ${t.id}${t.type ? ` (${t.type}-core ${t.core})` : ''}: ${fmt.pct(t.load_pct)} load`);
+      }
+      kv($('#cpu-kv'), [
+        ['Processor', c.name], ['Cores / threads', `${c.cores} / ${c.threads}`],
+        c.hybrid ? ['Core types', `${c.p_cores} performance + ${c.e_cores} efficiency`] : null,
+        ['Base clock', fmt.freq(c.base_mhz)], ['Package power', fmt.watts(p.cpu_package_w)],
+        ['Core power', fmt.watts(p.cpu_cores_w)], ['Integrated GPU power', fmt.watts(p.igpu_w)],
+        ...Object.entries(c.zones || {}).map(([zone, t]) => [`Sensor ${zone}`, fmt.temp(t, 1)]),
+      ]);
+      setChart('cpu-usage', state.live);
+      setChart('cpu-clock', state.live);
+      setChart('cpu-temp', state.live);
+      setChart('cpu-power', state.live);
+    },
   },
 
-  gpu(snap) {
-    const g = snap.gpu;
-    if (!g.available) {
-      kv($('#gpu-kv'), [['Status', g.error || 'No NVIDIA GPU found']]);
-      $('#gpu-note').textContent = 'OMNI reads NVIDIA GPUs through the driver (NVML).';
-      return;
-    }
-    kv($('#gpu-kv'), [
-      ['GPU', g.name], ['Driver', g.driver], ['Load', fmt.pct(g.util_pct)], ['Temperature', fmt.temp(g.temp_c)],
-      ['Power', `${fmt.watts(g.power_w)} of ${fmt.watts(g.power_limit_w, 0)}`], ['Core clock', `${fmt.freq(g.clock_mhz)} (max ${fmt.freq(g.max_clock_mhz)})`],
-      ['Memory clock', fmt.freq(g.mem_clock_mhz)], ['VRAM', `${fmt.bytes(g.vram_used)} of ${fmt.bytes(g.vram_total)}`],
-      ['Performance state', g.pstate], ['Limited by', g.limits && g.limits.length ? g.limits.join(', ') : 'Nothing'],
-    ]);
-    $('#gpu-note').textContent = g.paused
-      ? 'On battery, OMNI stops reading the GPU so it can sleep. Turn on "Poll GPU on battery" in Settings to change this.'
-      : g.asleep ? 'The GPU is in a low-power sleep state.' : '';
-    setChart('gpu-usage', state.live);
-    setChart('gpu-power', state.live);
-    setChart('gpu-temp', state.live);
+  gpu: {
+    key: (snap) => (snap.gpus || []).map((g) => g.luid).join(','),
+    build(snap) {
+      this.cards = {};
+      const gpus = snap.gpus || [];
+      if (!gpus.length) {
+        $('#gpu-cards').replaceChildren(el('div', { class: 'card' }, 'No graphics adapters reported by Windows.'));
+        return;
+      }
+      $('#gpu-cards').replaceChildren(...gpus.map((g) => {
+        const gauge = new UI.Gauge({ label: 'Load', unit: '%', max: 100, format: num(0), warn: 90 });
+        const info = el('div', { class: 'kv compact' });
+        const engines = el('div', { class: 'engines' });
+        this.cards[g.luid] = { gauge, info, engines };
+        return el('div', { class: 'card gpu-card' },
+          el('div', { class: 'gpu-head' }, el('span', { class: `vendor ${g.vendor.toLowerCase()}` }, g.vendor),
+            el('h2', {}, g.name), el('span', { class: 'badge' }, g.integrated ? 'Integrated' : 'Dedicated')),
+          el('div', { class: 'gpu-body' }, gauge.el, el('div', { class: 'gpu-detail' }, info, engines)));
+      }));
+    },
+    update(snap) {
+      for (const g of snap.gpus || []) {
+        const card = this.cards?.[g.luid];
+        if (!card) continue;
+        card.gauge.set(g.asleep ? 0 : g.load_pct, g.asleep ? 'Sleeping' : g.limits?.length ? `Limited: ${g.limits.join(', ')}` : '');
+        kv(card.info, [
+          g.temp_c != null ? ['Temperature', fmt.temp(g.temp_c)] : null,
+          g.power_w != null ? ['Power', `${fmt.watts(g.power_w)}${g.power_limit_w ? ` of ${fmt.watts(g.power_limit_w, 0)}` : ''}`] : null,
+          g.clock_mhz ? ['Core clock', fmt.freq(g.clock_mhz)] : null,
+          g.dedicated_total ? ['Dedicated memory', `${fmt.bytes(g.dedicated_used || 0)} of ${fmt.bytes(g.dedicated_total)}`] : null,
+          ['Shared memory used', fmt.bytes(g.shared_used || 0)],
+        ]);
+        card.engines.replaceChildren(...Object.entries(g.engines || {}).map(([name, v]) => el('div', { class: 'engine' },
+          el('span', {}, name.replace(/_\d+$/, '')), el('div', { class: 'bar' }, el('span', { style: `width:${v}%` })), el('b', {}, `${v.toFixed(0)}%`))));
+      }
+      setChart('gpu-usage', state.live);
+      setChart('gpu-power', state.live);
+      setChart('gpu-temp', state.live);
+    },
   },
 
-  battery(snap) {
-    const b = snap.battery;
-    if (!b.present) {
-      $('#battery-hero').replaceChildren(el('p', {}, 'No battery detected.'));
-      return;
-    }
-    $('#battery-hero').replaceChildren(gauge(b.percent), el('div', { class: 'gauge-text' },
-      el('div', { class: 'big' }, fmt.pct(b.percent)),
-      el('div', {}, `${b.state[0].toUpperCase()}${b.state.slice(1)}`),
-      el('div', { class: 'hint' }, b.time_left_s ? `${fmt.duration(b.time_left_s)} ${b.state === 'charging' ? 'to full' : 'left'}` : ''),
-      b.grade ? el('span', { class: `badge ${b.health_pct >= 85 ? 'good' : 'bad'}` }, `${b.health_pct >= 85 ? '✓' : '!'} Health: ${b.grade}`) : null));
-    kv($('#battery-kv'), [
-      ['Power', b.power_w ? `${b.power_w > 0 ? 'Charging' : 'Draining'} ${fmt.watts(Math.abs(b.power_w))}` : 'Idle'],
-      ['Voltage', b.voltage_v != null ? `${b.voltage_v.toFixed(2)} V` : null],
-      ['Energy now', fmt.energy(b.remaining_mwh)], ['Full charge capacity', fmt.energy(b.full_mwh)],
-      ['Design capacity', `${fmt.energy(b.design_mwh)}${b.design_source ? ` (${b.design_source})` : ''}`],
-      ['Health', b.health_pct != null ? `${b.health_pct.toFixed(1)} %` : null], ['Wear', b.wear_pct != null ? `${b.wear_pct.toFixed(1)} %` : null],
-      ['Charge cycles', b.cycles], ['Maker / chemistry', [b.manufacturer, b.chemistry].filter(Boolean).join(' · ') || null],
-    ]);
-    setChart('batt-pct', state.live);
-    setChart('batt-power', state.live);
+  energy: {
+    key: () => 'static',
+    build() {
+      this.donut = new UI.Donut('total');
+      $('#energy-donut').replaceChildren(this.donut.el);
+    },
+    update(snap) {
+      const p = snap.power || {};
+      const pkg = p.cpu_package_w || 0, cores = p.cpu_cores_w || 0, igpu = p.igpu_w || 0;
+      const uncore = Math.max(0, pkg - cores - igpu);
+      const parts = [
+        { key: 'cores', label: 'CPU cores', value: cores, color: '--series-1' },
+        { key: 'igpu', label: 'Integrated GPU', value: igpu, color: '--series-2' },
+        { key: 'uncore', label: 'CPU other (cache, memory controller)', value: uncore, color: '--series-3' },
+        { key: 'dgpu', label: 'Dedicated GPU', value: p.dgpu_w || 0, color: '--series-4' },
+      ];
+      if (p.rest_w != null) parts.push({ key: 'rest', label: 'Rest of laptop (screen, SSD, Wi-Fi…)', value: p.rest_w, color: '--series-5' });
+      for (const part of parts) part.text = fmt.watts(part.value);
+      const total = p.system_w ?? parts.reduce((s, x) => s + x.value, 0);
+      this.donut.set(parts, fmt.watts(total));
+      kv($('#energy-kv'), [
+        ['CPU package', fmt.watts(p.cpu_package_w)], ['CPU cores', fmt.watts(p.cpu_cores_w)],
+        ['Integrated GPU', fmt.watts(p.igpu_w)], ['Memory (DRAM)', p.dram_w != null ? fmt.watts(p.dram_w) : 'Not reported'],
+        ['Dedicated GPU', p.dgpu_w != null ? fmt.watts(p.dgpu_w) : snap.gpu.asleep ? 'Sleeping (≈0 W)' : snap.gpu.paused ? 'Paused on battery' : '—'],
+        ['Whole laptop', p.system_w != null ? fmt.watts(p.system_w) : 'Only measurable on battery'],
+      ]);
+      $('#energy-note').textContent = p.system_w == null
+        ? 'Unplug the charger to see the whole laptop\'s draw (Windows measures it from the battery\'s discharge rate).'
+        : `Battery is supplying ${fmt.watts(p.system_w)}. "Rest of laptop" = that minus the measured CPU and GPU.`;
+      const rows = [['cpu_package_w', 'CPU package'], ['cpu_cores_w', 'CPU cores'], ['igpu_w', 'Integrated GPU'],
+        ['dgpu_w', 'Dedicated GPU'], ['system_w', 'Whole laptop (on battery)']];
+      $('#energy-table').replaceChildren(el('tr', {}, el('th', {}, 'Component'), el('th', { class: 'num' }, 'Energy')),
+        ...rows.map(([key, label]) => el('tr', {}, el('td', {}, label), el('td', { class: 'num' }, fmt.wh(p.energy_wh?.[key])))));
+      $('#energy-since').textContent = p.energy_since ? `Counting since ${fmt.time(p.energy_since)}` : '';
+      setChart('energy', state.live);
+    },
   },
 
-  storage(snap) {
-    const m = snap.memory, s = snap.storage;
-    $('#memory').replaceChildren(volumeRow('RAM', m.used, m.total), m.swap_total ? volumeRow('Page file', m.swap_used, m.swap_total) : '');
-    $('#volumes').replaceChildren(...s.volumes.map((v) => volumeRow(`${v.mount} (${v.fs})`, v.used, v.total)));
-    const disks = s.disks || [];
-    $('#disks').replaceChildren(
-      el('tr', {}, ...['Drive', 'Type', 'Health', 'Temperature', 'Wear', 'Size'].map((h, i) => el('th', { class: i > 2 ? 'num' : '' }, h))),
-      ...(disks.length ? disks.map((d) => el('tr', {},
-        el('td', { class: 'name' }, d.name), el('td', {}, `${d.bus} ${d.media}`),
-        el('td', {}, el('span', { class: `badge ${d.health === 'Healthy' ? 'good' : 'bad'}` }, `${d.health === 'Healthy' ? '✓' : '!'} ${d.health}`)),
-        el('td', { class: 'num' }, d.temp_c ? fmt.temp(d.temp_c) : '—'), el('td', { class: 'num' }, d.wear_pct != null ? `${d.wear_pct} %` : '—'),
-        el('td', { class: 'num' }, fmt.bytes(d.size, 0))))
-        : [el('tr', {}, el('td', { colspan: 6 }, 'Reading drive health…'))]));
-    setChart('disk-io', state.live);
+  fans: {
+    key: (snap) => (snap.fans || []).map((f) => `${f.source}:${f.hardware}:${f.name}`).join('|'),
+    build(snap) {
+      this.fans = [];
+      const fans = snap.fans || [];
+      $('#fan-cards').replaceChildren(...(fans.length ? fans.map((f, i) => {
+        const fan = new UI.Fan(f.name);
+        this.fans[i] = fan;
+        return fan.el;
+      }) : [el('div', { class: 'card empty-state' }, el('div', { class: 'empty-icon' }, '✲'), el('div', {}, 'No fan speed sensors found on this PC yet.'))]));
+      // Fan chart: one series per fan (up to 4), keyed fan_0..fan_3 in the live buffer.
+      CHARTS.fans = [fans.slice(0, 4).map((f, i) => [`fan_${i}`, f.name]), { min: 0, format: (v) => `${(v / 1000).toFixed(1)}k`, emptyText: 'No fan readings yet.' }];
+      const host = $('[data-chart="fans"]');
+      host.parentElement.querySelectorAll('.legend').forEach((n) => n.remove());
+      delete state.charts.fans;
+    },
+    update(snap) {
+      const fans = snap.fans || [];
+      fans.forEach((f, i) => this.fans[i]?.set(f.rpm, maxFanRpm(), `${f.source}${f.hardware && f.hardware !== 'Laptop' ? ` · ${f.hardware}` : ''}`));
+      const sources = (snap.sources || []).join(' · ');
+      $('#sensor-sources').textContent = sources ? `Sources: ${sources}` : 'No extra sensor sources found.';
+      const bridged = (snap.sources || []).some((s) => !s.startsWith('HP BIOS'));
+      $('#sensor-help').hidden = fans.length > 0 && bridged;
+      $('#sensor-help h2').textContent = fans.length ? 'Want more sensors?' : 'Not seeing your fans?';
+      const control = snap.fan_control;
+      $('#fan-control-card').hidden = !control;
+      if (control) $('#max-fan').checked = !!control.max_fan;
+      renderSensorTable(snap.sensors || []);
+      if (fans.length) setChart('fans', state.live);
+    },
   },
 
-  network(snap) {
-    const n = snap.network;
-    kv($('#net-kv'), [['Download', fmt.rate(n.down_bps)], ['Upload', fmt.rate(n.up_bps)],
-      ['Received since boot', fmt.bytes(n.total_down)], ['Sent since boot', fmt.bytes(n.total_up)]]);
-    setChart('net-io', state.live);
+  battery: {
+    key: (snap) => String(!!snap.battery.present),
+    build(snap) {
+      if (!snap.battery.present) {
+        $('#battery-hero').replaceChildren(el('div', { class: 'empty-state' }, el('div', { class: 'empty-icon' }, '▮'), 'No battery detected. This looks like a desktop.'));
+        this.cell = null;
+        return;
+      }
+      this.cell = new UI.BatteryCell();
+      this.text = el('div', { class: 'battery-text' });
+      $('#battery-hero').replaceChildren(this.cell.el, this.text);
+      loadCapacity();
+    },
+    update(snap) {
+      const b = snap.battery;
+      if (!this.cell) return;
+      this.cell.set(b.percent, b.state === 'charging');
+      const healthy = b.health_pct >= 85;
+      this.text.replaceChildren(
+        el('div', { class: 'battery-state' }, `${b.state[0].toUpperCase()}${b.state.slice(1)}`),
+        el('div', { class: 'hint' }, b.time_left_s ? `${fmt.duration(b.time_left_s)} ${b.state === 'charging' ? 'to full' : 'left'}` : b.power_w ? fmt.watts(Math.abs(b.power_w)) : ''),
+        b.grade ? el('span', { class: `badge ${healthy ? 'good' : 'bad'}` }, `${healthy ? '✓' : '!'} Health ${b.health_pct.toFixed(1)} % · ${b.grade}`) : null,
+        b.cycles != null ? el('div', { class: 'hint' }, `${b.cycles} charge cycles`) : null);
+      kv($('#battery-kv'), [
+        ['Power', b.power_w ? `${b.power_w > 0 ? 'Charging' : 'Draining'} ${fmt.watts(Math.abs(b.power_w))}` : 'Idle'],
+        ['Voltage', b.voltage_v != null ? `${b.voltage_v.toFixed(2)} V` : null],
+        ['Energy now', fmt.energy(b.remaining_mwh)], ['Full charge capacity', fmt.energy(b.full_mwh)],
+        ['Design capacity', `${fmt.energy(b.design_mwh)}${b.design_source ? ` (${b.design_source})` : ''}`],
+        ['Health', b.health_pct != null ? `${b.health_pct.toFixed(1)} %` : null], ['Wear', b.wear_pct != null ? `${b.wear_pct.toFixed(1)} %` : null],
+        ['Charge cycles', b.cycles], ['Maker / chemistry', [b.manufacturer, b.chemistry].filter(Boolean).join(' · ') || null],
+      ]);
+      setChart('batt-pct', state.live);
+      setChart('batt-power', state.live);
+    },
   },
 
-  processes(snap) {
-    $('#procs').replaceChildren(
-      el('tr', {}, el('th', {}, 'Name'), el('th', { class: 'num' }, 'PID'), el('th', { class: 'num' }, 'CPU'), el('th', { class: 'num' }, 'Memory'), el('th', {}, '')),
-      ...snap.processes.map((p) => el('tr', {},
-        el('td', { class: 'name', title: p.name }, p.name), el('td', { class: 'num' }, p.pid),
-        el('td', { class: 'num' }, `${p.cpu_pct.toFixed(1)} %`), el('td', { class: 'num' }, fmt.bytes(p.mem)),
-        el('td', {}, el('button', { class: 'btn danger', onclick: () => endProcess(p) }, 'End')))));
+  storage: {
+    update(snap) {
+      const m = snap.memory, s = snap.storage;
+      $('#memory').replaceChildren(volumeRow('RAM', m.used, m.total), m.swap_total ? volumeRow('Page file', m.swap_used, m.swap_total) : '');
+      $('#volumes').replaceChildren(...s.volumes.map((v) => volumeRow(`${v.mount} (${v.fs})`, v.used, v.total)));
+      const disks = s.disks || [];
+      $('#disks').replaceChildren(
+        el('tr', {}, ...['Drive', 'Type', 'Health', 'Temperature', 'Wear', 'Size'].map((h, i) => el('th', { class: i > 2 ? 'num' : '' }, h))),
+        ...(disks.length ? disks.map((d) => el('tr', {},
+          el('td', { class: 'name' }, d.name), el('td', {}, `${d.bus} ${d.media}`),
+          el('td', {}, el('span', { class: `badge ${d.health === 'Healthy' ? 'good' : 'bad'}` }, `${d.health === 'Healthy' ? '✓' : '!'} ${d.health}`)),
+          el('td', { class: 'num' }, d.temp_c ? fmt.temp(d.temp_c) : '—'), el('td', { class: 'num' }, d.wear_pct != null ? `${d.wear_pct} %` : '—'),
+          el('td', { class: 'num' }, fmt.bytes(d.size, 0))))
+          : [el('tr', {}, el('td', { colspan: 6 }, 'Reading drive health…'))]));
+      setChart('disk-io', state.live);
+    },
   },
 
-  bench() { updateStressChart(); },
+  network: {
+    update(snap) {
+      const n = snap.network;
+      kv($('#net-kv'), [['Download', fmt.rate(n.down_bps)], ['Upload', fmt.rate(n.up_bps)],
+        ['Received since boot', fmt.bytes(n.total_down)], ['Sent since boot', fmt.bytes(n.total_up)]]);
+      setChart('net-io', state.live);
+    },
+  },
+
+  processes: {
+    update(snap) {
+      $('#procs').replaceChildren(
+        el('tr', {}, el('th', {}, 'Name'), el('th', { class: 'num' }, 'PID'), el('th', { class: 'num' }, 'CPU'), el('th', { class: 'num' }, 'Memory'), el('th', {}, '')),
+        ...snap.processes.map((p) => el('tr', {},
+          el('td', { class: 'name', title: p.name }, p.name), el('td', { class: 'num' }, p.pid),
+          el('td', { class: 'num' }, el('div', { class: 'cell-bar' }, el('span', { style: `width:${Math.min(100, p.cpu_pct)}%` }), `${p.cpu_pct.toFixed(1)} %`)),
+          el('td', { class: 'num' }, fmt.bytes(p.mem)),
+          el('td', {}, el('button', { class: 'btn danger small', onclick: () => endProcess(p) }, 'End')))));
+    },
+  },
+
+  ram: { show: () => startRamPolling() },
+  internet: { show: () => showInternet() },
+  power: { show: () => loadPower() },
+  bench: { show: () => loadBenchHistory(), update: () => updateStressChart() },
+  history: { show: () => loadHistory() },
+  settings: { show: () => renderSettings() },
 };
 
-function gauge(pct) {
-  const NS = 'http://www.w3.org/2000/svg';
-  const r = 54, c = 2 * Math.PI * r;
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 132 132');
-  svg.setAttribute('class', 'gauge');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `Charge ${Math.round(pct)} percent`);
-  for (const [color, dash] of [['--surface-2', null], ['--series-1', (c * Math.max(0, Math.min(100, pct))) / 100]]) {
-    const ring = document.createElementNS(NS, 'circle');
-    for (const [k, v] of Object.entries({ cx: 66, cy: 66, r, fill: 'none', 'stroke-width': 12 })) ring.setAttribute(k, v);
-    ring.style.stroke = `var(${color})`;
-    if (dash != null) {
-      ring.setAttribute('stroke-linecap', 'round');
-      ring.setAttribute('stroke-dasharray', `${dash} ${c}`);
-      ring.setAttribute('transform', 'rotate(-90 66 66)');
-    }
-    svg.append(ring);
+function renderSensorTable(sensors) {
+  const table = $('#sensor-table');
+  const key = sensors.map((s) => s.hardware + s.name).join('|');
+  if (!sensors.length) {
+    table.replaceChildren(el('tr', {}, el('td', {}, 'No extra sensors yet. See "Not seeing your fans?" above.')));
+    table.dataset.key = '';
+    return;
   }
-  return svg;
+  if (table.dataset.key !== key) {
+    table.dataset.key = key;
+    const rows = [el('tr', {}, el('th', {}, 'Sensor'), el('th', {}, 'Type'), el('th', { class: 'num' }, 'Value'), el('th', {}, 'Source'))];
+    let hardware = null;
+    sensors.forEach((s, i) => {
+      if (s.hardware !== hardware) {
+        hardware = s.hardware;
+        rows.push(el('tr', { class: 'group-row' }, el('td', { colspan: 4 }, hardware)));
+      }
+      rows.push(el('tr', {}, el('td', {}, s.name), el('td', {}, s.type), el('td', { class: 'num', 'data-i': i }), el('td', { class: 'hint' }, s.source)));
+    });
+    table.replaceChildren(...rows);
+  }
+  for (const cell of $$('td[data-i]', table)) {
+    const s = sensors[Number(cell.dataset.i)];
+    const value = s.type === 'Temperature' && s.value != null ? fmt.temp(s.value, 1)
+      : s.value == null ? '—' : `${Number.isInteger(s.value) ? s.value : s.value.toFixed(2)} ${s.unit}`;
+    if (cell.textContent !== value) cell.textContent = value;
+  }
 }
 
 function volumeRow(label, used, total) {
@@ -381,7 +601,192 @@ async function loadCapacity() {
   } catch (err) { toast(err.message); }
 }
 
-// ------------------------------------------------------------------ power
+// ------------------------------------------------------------------ RAM map
+
+const ram = { timer: null, built: false };
+const RAM_PARTS = [
+  ['process_private', 'Process private'], ['shared_other', 'Shared & other'], ['nonpaged_pool', 'Non-paged pool'],
+  ['paged_pool', 'Paged pool'], ['file_cache', 'File cache'], ['drivers_code', 'Drivers & kernel code'],
+];
+
+function startRamPolling() {
+  if (!ram.built) {
+    ram.lists = new UI.StackBar();
+    ram.active = new UI.StackBar();
+    ram.priority = new UI.Columns(['0', '1', '2', '3', '4', '5', '6', '7'], '--series-3');
+    $('#ram-lists').replaceChildren(ram.lists.el);
+    $('#ram-active').replaceChildren(ram.active.el);
+    $('#ram-priority').replaceChildren(ram.priority.el);
+    ram.built = true;
+  }
+  clearInterval(ram.timer);
+  const tick = () => { if (state.view === 'ram') loadRam(); else clearInterval(ram.timer); };
+  tick();
+  ram.timer = setInterval(tick, 2000);
+}
+
+async function loadRam() {
+  let data;
+  try { data = await api('/api/memory/map'); } catch (err) { toast(err.message); return; }
+  const m = data.map;
+  ram.lists.set([
+    { key: 'active', label: 'In use', value: m.active, color: '--series-1', text: fmt.bytes(m.active) },
+    { key: 'modified', label: 'Modified', value: m.modified, color: '--series-2', text: fmt.bytes(m.modified) },
+    { key: 'standby', label: 'Standby (cache)', value: m.standby, color: '--series-3', text: fmt.bytes(m.standby) },
+    { key: 'free', label: 'Free', value: m.free, color: '--series-4', text: fmt.bytes(m.free) },
+    { key: 'zeroed', label: 'Zeroed', value: m.zeroed, color: '--series-5', text: fmt.bytes(m.zeroed) },
+  ], m.total);
+  ram.active.set(RAM_PARTS.map(([key, label], i) => ({
+    key, label, value: m.active_parts[key], color: `--series-${i + 1}`, text: fmt.bytes(m.active_parts[key]),
+  })), m.active);
+  if (m.standby_by_priority) {
+    ram.priority.set(m.standby_by_priority, (v) => fmt.bytes(v, 0),
+      m.standby_by_priority.map((v, i) => `Priority ${i}: ${fmt.bytes(v)} (${(m.repurposed_by_priority?.[i] || 0).toLocaleString()} pages repurposed since boot)`));
+  } else {
+    $('#ram-priority').replaceChildren(el('p', { class: 'hint' }, 'Windows did not report standby priorities.'));
+  }
+  kv($('#ram-kv'), [
+    ['Total', fmt.bytes(m.total)], ['Available', fmt.bytes(m.available)],
+    ['Committed', `${fmt.bytes(m.committed)} of ${fmt.bytes(m.commit_limit)}`],
+    ['Paged pool (total)', fmt.bytes(m.paged_pool_total)],
+    ['Page faults', m.page_faults_per_s != null ? `${Math.round(m.page_faults_per_s).toLocaleString()} /s` : null],
+    ['Hard faults (from disk)', m.hard_faults_per_s != null ? `${Math.round(m.hard_faults_per_s).toLocaleString()} /s` : null],
+  ]);
+  if (!ram.commandsBuilt) {
+    $('#ram-commands').replaceChildren(...Object.entries(data.commands).map(([key, c]) => el('div', { class: 'command' },
+      el('b', {}, c.label), el('div', { class: 'hint' }, c.help),
+      el('button', { class: 'btn', disabled: !data.admin, onclick: () => runRamCommand(key, c.label) }, data.admin ? 'Run' : 'Needs admin'))));
+    if (!data.admin) $('#ram-admin-note').textContent += ' Start OMNI as administrator to use them.';
+    ram.commandsBuilt = true;
+  }
+  $('#ram-procs').replaceChildren(
+    el('tr', {}, el('th', {}, 'Process'), el('th', { class: 'num' }, 'PID'), el('th', { class: 'num' }, 'Working set'), el('th', { class: 'num' }, 'Private'), el('th', {}, '')),
+    ...data.processes.map((p) => el('tr', {}, el('td', { class: 'name', title: p.name }, p.name), el('td', { class: 'num' }, p.pid),
+      el('td', { class: 'num' }, fmt.bytes(p.working_set)), el('td', { class: 'num' }, fmt.bytes(p.private)),
+      el('td', {}, el('button', { class: 'btn small', onclick: () => trimProcess(p) }, 'Trim')))));
+}
+
+async function runRamCommand(key, label) {
+  if (!confirm(`${label}? Programs may feel slower for a moment while Windows reloads data.`)) return;
+  const out = $('#ram-command-result');
+  out.textContent = `${label}…`;
+  try {
+    const r = await api('/api/memory/command', { method: 'POST', body: { command: key } });
+    const row = (name, k) => el('div', {}, el('dt', {}, name), el('dd', {}, `${fmt.bytes(r.before[k])} → ${fmt.bytes(r.after[k])}`));
+    out.replaceChildren(el('p', {}, el('b', {}, `${r.label}: done in ${r.seconds} s`)),
+      el('div', { class: 'kv reveal' }, row('Standby', 'standby'), row('Modified', 'modified'), row('Free', 'free')));
+    loadRam();
+  } catch (err) { out.textContent = err.message; }
+}
+
+async function trimProcess(p) {
+  try {
+    const r = await api(`/api/memory/trim/${p.pid}`, { method: 'POST' });
+    toast(`${r.name}: ${fmt.bytes(r.before)} → ${fmt.bytes(r.after)}`);
+    loadRam();
+  } catch (err) { toast(err.message); }
+}
+
+// ------------------------------------------------------------------ internet test
+
+const net = { gauge: null, job: null };
+
+function showInternet() {
+  if (!net.gauge) {
+    // Log scale: 1 Mbps and 1 Gbps both have room on the dial.
+    net.gauge = new UI.Gauge({ label: 'Speed', unit: 'Mbps', max: 1000, format: (v) => (v == null ? '—' : v < 10 ? v.toFixed(1) : Math.round(v).toString()),
+      scale: (v) => (Math.log10(1 + v) / Math.log10(1001)) * 100 });
+    net.gauge.el.classList.add('speed-gauge');
+    $('#speed-gauge').replaceChildren(net.gauge.el);
+    net.gauge.set(null, 'Ready');
+  }
+  api('/api/net/wifi').then((w) => kv($('#wifi-kv'), w ? [
+    ['Network', w.ssid], ['Signal', w.signal_pct != null ? `${w.signal_pct} %${w.rssi_dbm != null ? ` (${w.rssi_dbm} dBm)` : ''}` : null],
+    ['Band / channel', [w.band, w.channel && `ch ${w.channel}`].filter(Boolean).join(' · ')], ['Standard', w.radio],
+    ['Link speed', w.receive_mbps ? `${w.receive_mbps} ↓ / ${w.transmit_mbps} ↑ Mbps` : null], ['Security', w.auth],
+  ] : [['Wi-Fi', 'Not connected over Wi-Fi (or no Wi-Fi adapter)']])).catch(() => {});
+  loadSpeedHistory();
+}
+
+async function loadSpeedHistory() {
+  try {
+    const rows = (await api('/api/bench/results')).filter((r) => r.kind === 'speedtest').reverse();
+    setChart('speed-history', rows.map((r) => ({ ts: r.ts, download_mbps: r.result.download_mbps ?? null, upload_mbps: r.result.upload_mbps ?? null })));
+  } catch { /* history is optional */ }
+}
+
+function renderSpeedResult(r, partial = false) {
+  const cell = (label, value, unitText, extra) => el('div', { class: `result${partial ? '' : ' reveal'}` },
+    el('div', { class: 'result-label' }, label), el('div', { class: 'result-value' }, value ?? '—', value != null ? el('span', {}, ` ${unitText}`) : ''), extra || '');
+  const grade = r.bufferbloat_grade;
+  $('#speed-result').replaceChildren(
+    cell('Download', r.download_mbps, 'Mbps'), cell('Upload', r.upload_mbps, 'Mbps'),
+    cell('Latency', r.latency_ms, 'ms', r.jitter_ms != null ? el('div', { class: 'hint' }, `Jitter ${r.jitter_ms} ms`) : ''),
+    cell('Under load', r.loaded_latency_ms, 'ms', grade ? el('span', { class: `badge ${'AB'.includes(grade[0]) ? 'good' : 'bad'}` }, `Bufferbloat ${grade}`) : ''),
+    cell('Server', r.colo ? `Cloudflare ${r.colo}` : null, r.country || ''),
+    cell('Data used', r.download_bytes || r.upload_bytes ? fmt.bytes((r.download_bytes || 0) + (r.upload_bytes || 0)) : null, ''));
+}
+
+async function startSpeedTest() {
+  const button = $('#speed-start');
+  if (net.job && net.job.status === 'running') {
+    api(`/api/jobs/${net.job.id}/stop`, { method: 'POST' });
+    return;
+  }
+  const parts = $$('#view-internet .check input:checked').map((i) => i.value);
+  if (!parts.length) { toast('Pick at least one part of the test'); return; }
+  button.textContent = 'Stop';
+  const phases = $$('#speed-phases span');
+  try {
+    const job = await runJob('/api/net/speedtest', { parts }, (j) => {
+      net.job = j;
+      const phase = /latency/i.test(j.message) ? 'latency' : /download/i.test(j.message) ? 'download' : /upload/i.test(j.message) ? 'upload' : null;
+      phases.forEach((p) => p.classList.toggle('active', p.dataset.phase === phase));
+      $('#speed-status').textContent = j.message;
+      if (phase === 'latency') {
+        const ms = Number((j.message.match(/([\d.]+) ms/) || [])[1]);
+        net.gauge.set(null, Number.isFinite(ms) ? `Latency ${ms} ms` : 'Measuring latency');
+      } else if (j.live != null) net.gauge.set(j.live, phase === 'upload' ? 'Upload' : 'Download');
+    }, 300);
+    phases.forEach((p) => p.classList.remove('active'));
+    if (job.status === 'failed') { $('#speed-status').textContent = `Failed: ${job.error}`; net.gauge.set(null, 'Failed'); }
+    else if (job.result) {
+      const r = job.result;
+      renderSpeedResult(r);
+      net.gauge.set(r.download_mbps ?? r.upload_mbps ?? null, r.download_mbps != null ? 'Download' : r.upload_mbps != null ? 'Upload' : `Latency ${r.latency_ms} ms`);
+      $('#speed-status').textContent = job.status === 'stopped' ? 'Stopped' : 'Done';
+      loadSpeedHistory();
+    }
+  } catch (err) { $('#speed-status').textContent = err.message; }
+  button.textContent = 'Start test';
+}
+
+async function runDiagnostics() {
+  const button = $('#diag-start');
+  button.disabled = true;
+  try {
+    const job = await runJob('/api/net/diagnostics', undefined, (j) => { $('#diag-status').textContent = j.message; });
+    if (job.status === 'failed') { $('#diag-status').textContent = `Failed: ${job.error}`; return; }
+    const r = job.result;
+    $('#ping-table').replaceChildren(
+      el('tr', {}, el('th', {}, 'Network'), el('th', { class: 'num' }, 'Latency'), el('th', { class: 'num' }, 'Jitter'), el('th', { class: 'num' }, 'Loss')),
+      ...r.ping.map((p) => el('tr', { class: 'reveal' }, el('td', {}, `${p.name} (${p.host})`), el('td', { class: 'num' }, p.latency_ms != null ? `${p.latency_ms} ms` : '—'),
+        el('td', { class: 'num' }, p.jitter_ms != null ? `${p.jitter_ms} ms` : '—'),
+        el('td', { class: 'num' }, el('span', { class: `badge ${p.loss_pct ? 'bad' : 'good'}` }, `${p.loss_pct ? '!' : '✓'} ${p.loss_pct} %`)))));
+    const times = r.dns.filter((d) => d.median_ms != null).map((d) => d.median_ms);
+    const best = Math.min(...times), worst = Math.max(...times, 1);
+    $('#dns-bars').replaceChildren(...r.dns.map((d) => el('div', { class: 'dns-row reveal' },
+      el('div', { class: 'dns-name' }, el('b', {}, d.resolver), ` ${d.address || ''}`, d.current ? el('span', { class: 'badge' }, 'current') : '',
+        d.median_ms === best ? el('span', { class: 'badge good' }, '✓ fastest') : ''),
+      el('div', { class: 'bar' }, el('span', { style: `width:${d.median_ms ? (d.median_ms / worst) * 100 : 0}%` })),
+      el('div', { class: 'dns-ms' }, d.failed ? 'No answer' : `${d.median_ms} ms`))),
+      el('p', { class: 'hint' }, 'Median of 6 lookups each. Lower is better; results vary from run to run.'));
+    $('#diag-status').textContent = 'Done';
+  } catch (err) { $('#diag-status').textContent = err.message; }
+  button.disabled = false;
+}
+
+// ------------------------------------------------------------------ power plans
 
 const BOOST_LABELS = { 0: 'Off', 1: 'On', 2: 'Aggressive', 3: 'Efficient', 4: 'Efficient aggressive', 5: 'Aggressive at guaranteed', 6: 'Efficient aggressive at guaranteed' };
 
@@ -420,11 +825,11 @@ async function applyTweak(name, value) {
 
 // ------------------------------------------------------------------ jobs (benchmarks, stress, cleanup)
 
-async function runJob(startPath, body, onUpdate) {
+async function runJob(startPath, body, onUpdate, pollMs = 700) {
   let job = await api(startPath, { method: 'POST', body });
   onUpdate(job);
   while (job.status === 'running') {
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, pollMs));
     job = await api(`/api/jobs/${job.id}`);
     onUpdate(job);
   }
@@ -432,27 +837,29 @@ async function runJob(startPath, body, onUpdate) {
 }
 
 const BENCHES = {
-  cpu: ['CPU', 'Single-core speed, then every thread at once in separate processes.', (r) => [
+  cpu: ['CPU', '⚙', 'Single-core speed, then every thread at once in separate processes.', (r) => [
     ['Single-core', `${r.single_score.toLocaleString()} pts`], ['Multi-core', `${r.multi_score.toLocaleString()} pts`],
     ['Scaling', `${r.scaling}× on ${r.threads} threads`]]],
-  memory: ['Memory', 'Native memcpy / memset bandwidth on a 512 MiB buffer.', (r) => [
+  memory: ['Memory', '▤', 'Native memcpy / memset bandwidth on a 512 MiB buffer.', (r) => [
     ['Copy', fmt.rate(r.copy_bps)], ['Write', fmt.rate(r.write_bps)]]],
-  disk: ['SSD', 'Unbuffered 1 GiB write and read, then random 4 KiB reads (QD1). Uses your temp folder.', (r) => [
+  disk: ['SSD', '⛁', 'Unbuffered 1 GiB write and read, then random 4 KiB reads (QD1). Uses your temp folder.', (r) => [
     ['Sequential read', fmt.rate(r.seq_read_bps)], ['Sequential write', fmt.rate(r.seq_write_bps)],
     ['Random 4K', `${r.rand4k_iops.toLocaleString()} IOPS`], ['4K latency', `${r.rand4k_latency_ms_avg} ms avg · ${r.rand4k_latency_ms_p99} ms p99`]]],
-  gpu: ['GPU', 'FP32 fused multiply-add throughput through CUDA.', (r) => [
+  gpu: ['GPU', '◧', 'FP32 fused multiply-add throughput through CUDA (NVIDIA).', (r) => [
     ['FP32', `${r.fp32_tflops} TFLOPS`], ['Device', r.device]]],
 };
 
 function renderBenchCards() {
-  $('#bench-cards').replaceChildren(...Object.entries(BENCHES).map(([kind, [title, desc]]) => {
+  $('#bench-cards').replaceChildren(...Object.entries(BENCHES).map(([kind, [title, icon, desc]]) => {
     const progress = el('div', { class: 'progress', hidden: true }, el('span'));
     const status = el('div', { class: 'hint' });
     const result = el('div', { class: 'bench-result' });
     const stop = el('button', { class: 'btn', hidden: true }, 'Stop');
     const run = el('button', { class: 'btn primary' }, 'Run');
+    const card = el('div', { class: 'card bench-card' }, el('div', { class: 'bench-icon', 'aria-hidden': 'true' }, icon),
+      el('h2', {}, title), el('p', { class: 'hint' }, desc), result, progress, status, el('div', { class: 'toolbar' }, run, stop));
     run.addEventListener('click', async () => {
-      run.disabled = true; progress.hidden = false; result.replaceChildren();
+      run.disabled = true; progress.hidden = false; result.replaceChildren(); card.classList.add('running');
       let jobId = null;
       stop.hidden = false;
       stop.onclick = () => jobId && api(`/api/jobs/${jobId}/stop`, { method: 'POST' });
@@ -464,16 +871,15 @@ function renderBenchCards() {
         });
         if (job.status === 'failed') status.textContent = `Failed: ${job.error}`;
         else if (job.result) {
-          const rows = BENCHES[kind][2](job.result);
-          result.replaceChildren(...rows.map(([k, v], i) => el('div', {}, i === 0 ? el('div', { class: 'big' }, v) : el('b', {}, v), ' ', el('span', { class: 'hint' }, k))));
+          const rows = BENCHES[kind][3](job.result);
+          result.replaceChildren(...rows.map(([k, v], i) => el('div', { class: 'reveal' }, i === 0 ? el('div', { class: 'big' }, v) : el('b', {}, v), ' ', el('span', { class: 'hint' }, k))));
           status.textContent = 'Done';
           loadBenchHistory();
         }
       } catch (err) { status.textContent = err.message; }
-      run.disabled = false; stop.hidden = true; progress.hidden = true;
+      run.disabled = false; stop.hidden = true; progress.hidden = true; card.classList.remove('running');
     });
-    return el('div', { class: 'card' }, el('h2', {}, title), el('p', { class: 'hint' }, desc), result, progress, status,
-      el('div', { class: 'toolbar' }, run, stop));
+    return card;
   }));
 }
 
@@ -482,7 +888,7 @@ async function loadBenchHistory() {
   try { rows = await api('/api/bench/results'); } catch { return; }
   const summary = (kind, r) => {
     const def = BENCHES[kind.replace('bench-', '')];
-    return def ? def[2](r).map(([k, v]) => `${k}: ${v}`).join(' · ') : '';
+    return def ? def[3](r).map(([k, v]) => `${k}: ${v}`).join(' · ') : '';
   };
   $('#bench-history').replaceChildren(
     el('tr', {}, el('th', {}, 'When'), el('th', {}, 'Test'), el('th', {}, 'Result')),
@@ -569,7 +975,7 @@ async function runCleanup() {
 // ------------------------------------------------------------------ history
 
 async function loadHistory() {
-  const metrics = 'cpu_pct,gpu_pct,ram_pct,cpu_temp_c,gpu_temp_c,batt_pct,gpu_w';
+  const metrics = 'cpu_pct,gpu_pct,ram_pct,cpu_temp_c,gpu_temp_c,batt_pct,gpu_w,cpu_w,system_w,fan_rpm';
   try {
     const data = await api(`/api/history?metrics=${metrics}&range=${state.historyRange}`);
     const points = data.ts.map((ts, i) => {
@@ -577,7 +983,7 @@ async function loadHistory() {
       for (const key of metrics.split(',')) p[key] = data[key][i];
       return p;
     });
-    ['h-usage', 'h-temps', 'h-batt', 'h-gpu-power'].forEach((name) => setChart(name, points));
+    ['h-usage', 'h-temps', 'h-power', 'h-fans', 'h-batt', 'h-gpu-power'].forEach((name) => setChart(name, points));
   } catch (err) { toast(err.message); }
 }
 
@@ -602,14 +1008,29 @@ const SETTING_TEXT = {
     web_port: ['Dashboard port', 'Takes effect next time OMNI starts.'],
     open_browser: ['Open browser on start', ''],
   }],
+  display: ['Display', {
+    animations: ['Animations', 'Smooth gauges, spinning fans and transitions. Also off when Windows "Animation effects" is off.'],
+    fan_max_rpm: ['Fan full-scale (RPM)', 'The RPM shown as 100 % on fan gauges.'],
+  }],
   units: ['Units', {
     temperature: ['Temperature', 'C = Celsius (metric), F = Fahrenheit.'],
     data: ['Data sizes', 'si = metric (1 GB = 1000 MB), iec = binary (1 GiB = 1024 MiB).'],
     energy: ['Battery energy', 'Wh or mWh.'],
   }],
+  sensors: ['Sensors & fans', {
+    interval_s: ['Fan / sensor refresh (s)', ''],
+    hp_bios: ['HP OMEN / Victus BIOS', 'Fan speeds and max-fan switch on HP gaming laptops (needs administrator).'],
+    hwmon_bridge: ['LibreHardwareMonitor bridge', 'Reads every sensor while LibreHardwareMonitor or OpenHardwareMonitor runs.'],
+    hwinfo_bridge: ['HWiNFO bridge', 'Reads every sensor while HWiNFO runs with Shared Memory Support on.'],
+  }],
+  network: ['Internet test', {
+    speedtest_server: ['Speed-test server', 'Must offer Cloudflare-style /__down and /__up endpoints.'],
+    streams: ['Parallel streams', 'More streams fill fast lines; 4 suits most connections.'],
+    seconds: ['Seconds per direction', 'Longer tests are steadier but use more data.'],
+  }],
   gpu: ['GPU', {
-    enabled: ['Read the GPU', ''],
-    poll_on_battery: ['Poll GPU on battery', 'Off lets an Optimus GPU sleep on battery and saves power.'],
+    enabled: ['Read NVIDIA driver details', ''],
+    poll_on_battery: ['Poll NVIDIA GPU on battery', 'Off lets an Optimus GPU sleep on battery and saves power.'],
   }],
   history: ['History', {
     enabled: ['Record history', 'Stored locally in SQLite.'],
@@ -644,28 +1065,34 @@ async function loadSettings() {
 
 function renderSettings() {
   if (!state.settings) return;
-  const form = $('#settings-form');
-  form.replaceChildren(...Object.entries(state.schema).map(([group, keys]) => {
-    const [groupLabel, labels] = SETTING_TEXT[group] || [group, {}];
+  const order = Object.keys(SETTING_TEXT).filter((g) => state.schema[g]);
+  $('#settings-form').replaceChildren(...order.map((group) => {
+    const keys = state.schema[group];
+    const [groupLabel, labels] = SETTING_TEXT[group];
     return el('fieldset', {}, el('legend', {}, groupLabel), ...Object.entries(keys).map(([key, spec]) => {
       const [label, desc] = labels[key] || [key, ''];
       const value = state.settings[group][key];
       const id = `s-${group}-${key}`;
       let input;
-      if (typeof spec.default === 'boolean') input = el('input', { type: 'checkbox', id, checked: value });
-      else if (Array.isArray(spec.allowed) && typeof spec.default === 'string') {
-        input = el('select', { id }, ...spec.allowed.map((opt) => el('option', { value: opt, selected: opt === value }, opt)));
-      } else if (typeof spec.default === 'number') {
-        input = el('input', { type: 'number', id, value, min: spec.allowed[0], max: spec.allowed[1], step: Number.isInteger(spec.default) ? 1 : 0.5 });
-      } else input = el('input', { type: 'text', id, value });
-      input.dataset.group = group;
-      input.dataset.key = key;
+      if (typeof spec.default === 'boolean') {
+        input = el('input', { type: 'checkbox', id, checked: value });
+        input.dataset.group = group; input.dataset.key = key;
+        input = el('label', { class: 'switch' }, input, el('span', { class: 'slider' }));
+      } else {
+        if (Array.isArray(spec.allowed) && typeof spec.default === 'string') {
+          input = el('select', { id }, ...spec.allowed.map((opt) => el('option', { value: opt, selected: opt === value }, opt)));
+        } else if (typeof spec.default === 'number') {
+          input = el('input', { type: 'number', id, value, min: spec.allowed[0], max: spec.allowed[1], step: Number.isInteger(spec.default) ? 1 : 0.5 });
+        } else input = el('input', { type: 'text', id, value });
+        input.dataset.group = group; input.dataset.key = key;
+      }
       return el('div', { class: 'setting' }, el('label', { for: id }, el('div', {}, label), desc ? el('div', { class: 'desc' }, desc) : null), input);
     }));
   }));
   api('/api/info').then((info) => kv($('#about'), [
-    ['Version', info.version], ['Running as administrator', info.admin ? 'Yes' : 'No (some cleanup needs it)'],
-    ['GPU', info.gpu || info.gpu_error], ['Data folder', info.data_dir],
+    ['Version', info.version], ['Running as administrator', info.admin ? 'Yes' : 'No (fans and some cleanup need it)'],
+    ['GPU', info.gpu || info.gpu_error], ['Sensor sources', (info.sensor_sources || []).join(', ') || 'Windows only'],
+    ['Data folder', info.data_dir],
   ])).catch(() => {});
 }
 
@@ -682,6 +1109,7 @@ async function saveSettings(event) {
     state.settings = (await api('/api/settings', { method: 'PUT', body: changes })).values;
     $('#settings-status').textContent = 'Saved.';
     applyTheme();
+    state.built = {}; // units or scales may have changed: rebuild views
     render();
   } catch (err) { $('#settings-status').textContent = err.message; }
 }
@@ -691,6 +1119,8 @@ function applyTheme() {
   if (theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
   try { localStorage.setItem('omni-theme', theme); } catch { /* ignore */ }
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.documentElement.classList.toggle('no-anim', reduce || state.settings?.display?.animations === false);
   Object.values(state.charts).forEach((c) => c.draw());
 }
 
@@ -716,6 +1146,7 @@ function segmented(selector, attr, onPick) {
 
 async function init() {
   $$('.sidebar button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+  window.addEventListener('hashchange', () => showView(location.hash.slice(1) || 'overview'));
   $('#menu-btn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
   $('#theme-btn').addEventListener('click', cycleTheme);
   segmented('#proc-sort', 'sort', (sort) => api('/api/processes/sort', { method: 'POST', body: { sort } }).catch((e) => toast(e.message)));
@@ -731,6 +1162,16 @@ async function init() {
     catch (err) { toast(err.message); }
     loadPower();
   });
+  $('#max-fan').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    try {
+      const r = await api('/api/fans/max', { method: 'POST', body: { on } });
+      toast(r.max_fan ? 'Fans at maximum speed' : 'Fans back on automatic control');
+    } catch (err) { e.target.checked = !on; toast(err.message); }
+  });
+  $('#energy-reset').addEventListener('click', () => api('/api/energy/reset', { method: 'POST' }).then(() => toast('Energy counters reset')).catch((e) => toast(e.message)));
+  $('#speed-start').addEventListener('click', startSpeedTest);
+  $('#diag-start').addEventListener('click', runDiagnostics);
   $('#cleanup-scan').addEventListener('click', scanCleanup);
   $('#cleanup-run').addEventListener('click', runCleanup);
   $('#stress-start').addEventListener('click', startStress);
@@ -740,7 +1181,7 @@ async function init() {
   $('#settings-reset').addEventListener('click', async () => {
     if (!confirm('Reset every setting to its default?')) return;
     state.settings = (await api('/api/settings/reset', { method: 'POST' })).values;
-    applyTheme(); renderSettings(); $('#settings-status').textContent = 'Defaults restored.';
+    applyTheme(); renderSettings(); state.built = {}; $('#settings-status').textContent = 'Defaults restored.';
   });
   renderBenchCards();
 

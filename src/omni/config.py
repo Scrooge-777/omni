@@ -27,6 +27,21 @@ SCHEMA: dict[str, dict[str, tuple]] = {
         "enabled": (True, None),
         "poll_on_battery": (False, None),
     },
+    "sensors": {
+        "interval_s": (2, (1, 30)),
+        "hp_bios": (True, None),
+        "hwmon_bridge": (True, None),
+        "hwinfo_bridge": (True, None),
+    },
+    "display": {
+        "animations": (True, None),
+        "fan_max_rpm": (6000, (1000, 10000)),
+    },
+    "network": {
+        "speedtest_server": ("https://speed.cloudflare.com", None),
+        "streams": (4, (1, 16)),
+        "seconds": (8, (4, 30)),
+    },
     "history": {
         "enabled": (True, None),
         "sample_every_s": (10, (5, 300)),
@@ -88,9 +103,11 @@ def _coerce(group: str, key: str, value):
         if not low <= number <= high:
             raise SettingsError(f"{group}.{key} must be between {low} and {high}")
         return number
-    value = str(value)
+    value = str(value).strip()
     if allowed and value not in allowed:
         raise SettingsError(f"{group}.{key} must be one of: {', '.join(allowed)}")
+    if key.endswith("_server") and not value.startswith(("https://", "http://")):
+        raise SettingsError(f"{group}.{key} must be an http(s) address")
     return value
 
 

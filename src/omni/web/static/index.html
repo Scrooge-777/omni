@@ -12,7 +12,8 @@
 <body>
   <header class="topbar">
     <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu">☰</button>
-    <div class="brand"><img src="/static/icon.svg" alt="" width="22" height="22"> OMNI <span class="version">v{{VERSION}}</span></div>
+    <div class="brand"><img src="/static/icon.svg" alt="" width="24" height="24"> OMNI <span class="version">v{{VERSION}}</span></div>
+    <div class="topbar-stats" id="topbar-stats" aria-hidden="true"></div>
     <div class="topbar-right">
       <span class="conn" id="conn" title="Live connection"><span class="dot"></span><span id="conn-text">Connecting</span></span>
       <button class="icon-btn" id="theme-btn" aria-label="Switch theme" title="Switch theme">◐</button>
@@ -20,58 +21,105 @@
   </header>
 
   <nav class="sidebar" id="sidebar" aria-label="Sections">
-    <button data-view="overview" class="active">Overview</button>
-    <button data-view="cpu">CPU</button>
-    <button data-view="gpu">GPU</button>
-    <button data-view="battery">Battery</button>
-    <button data-view="storage">Memory &amp; storage</button>
-    <button data-view="network">Network</button>
-    <button data-view="processes">Processes</button>
-    <div class="nav-sep"></div>
-    <button data-view="power">Power</button>
-    <button data-view="cleanup">Cleanup</button>
-    <button data-view="bench">Benchmarks</button>
-    <button data-view="history">History</button>
-    <div class="nav-sep"></div>
-    <button data-view="settings">Settings</button>
+    <div class="nav-title">Monitor</div>
+    <button data-view="overview" class="active"><span class="nav-icon">◉</span>Overview</button>
+    <button data-view="cpu"><span class="nav-icon">▦</span>CPU</button>
+    <button data-view="gpu"><span class="nav-icon">◧</span>Graphics</button>
+    <button data-view="energy"><span class="nav-icon">ϟ</span>Power draw</button>
+    <button data-view="fans"><span class="nav-icon">✲</span>Fans &amp; sensors</button>
+    <button data-view="battery"><span class="nav-icon">▮</span>Battery</button>
+    <button data-view="storage"><span class="nav-icon">▤</span>Memory &amp; storage</button>
+    <button data-view="ram"><span class="nav-icon">▥</span>RAM map</button>
+    <button data-view="network"><span class="nav-icon">⇅</span>Network</button>
+    <button data-view="processes"><span class="nav-icon">≡</span>Processes</button>
+    <div class="nav-title">Tools</div>
+    <button data-view="internet"><span class="nav-icon">◎</span>Internet test</button>
+    <button data-view="power"><span class="nav-icon">⏻</span>Power plans</button>
+    <button data-view="cleanup"><span class="nav-icon">⌫</span>Cleanup</button>
+    <button data-view="bench"><span class="nav-icon">⏱</span>Benchmarks</button>
+    <button data-view="history"><span class="nav-icon">↺</span>History</button>
+    <div class="nav-title">App</div>
+    <button data-view="settings"><span class="nav-icon">⚙</span>Settings</button>
   </nav>
 
   <main class="content">
     <div id="alerts" class="alerts" aria-live="polite"></div>
 
     <section class="view active" id="view-overview">
-      <h1>Overview</h1>
-      <div class="tiles" id="tiles"></div>
+      <div class="page-head"><h1>Overview</h1><p class="hint" id="overview-machine"></p></div>
+      <div class="gauges" id="overview-gauges"></div>
       <div class="grid-2">
         <div class="card"><h2>Usage</h2><div class="chart" data-chart="usage"></div></div>
         <div class="card"><h2>Temperature</h2><div class="chart" data-chart="temps"></div></div>
       </div>
+      <div class="grid-2">
+        <div class="card"><h2>Power draw</h2><div class="chart" data-chart="ov-power"></div></div>
+        <div class="card"><h2>Disk &amp; network</h2><div class="mini-stats" id="overview-io"></div></div>
+      </div>
     </section>
 
     <section class="view" id="view-cpu">
-      <h1>CPU</h1>
-      <div class="card"><div class="kv" id="cpu-kv"></div></div>
-      <div class="card"><h2>Load per thread</h2><div class="cores" id="cores"></div></div>
+      <div class="page-head"><h1>CPU</h1><p class="hint" id="cpu-name"></p></div>
+      <div class="gauges small" id="cpu-gauges"></div>
+      <div class="card"><h2>Every thread</h2>
+        <p class="hint" id="cpu-thread-hint">Fill = load. Colour of the cap shows core type.</p>
+        <div id="cpu-cylinders" class="cyl-groups"></div>
+      </div>
       <div class="grid-2">
         <div class="card"><h2>Usage</h2><div class="chart" data-chart="cpu-usage"></div></div>
         <div class="card"><h2>Clock speed</h2><div class="chart" data-chart="cpu-clock"></div></div>
+        <div class="card"><h2>Temperature</h2><div class="chart" data-chart="cpu-temp"></div></div>
+        <div class="card"><h2>Power</h2><div class="chart" data-chart="cpu-power"></div></div>
       </div>
-      <div class="card"><h2>Temperature</h2><div class="chart" data-chart="cpu-temp"></div></div>
+      <div class="card"><h2>Details</h2><div class="kv" id="cpu-kv"></div></div>
     </section>
 
     <section class="view" id="view-gpu">
-      <h1>GPU</h1>
-      <div class="card"><div class="kv" id="gpu-kv"></div><p class="hint" id="gpu-note"></p></div>
+      <div class="page-head"><h1>Graphics</h1><p class="hint">Every graphics adapter, integrated and dedicated, from Windows' GPU counters. NVIDIA cards add driver details.</p></div>
+      <div class="gpu-grid" id="gpu-cards"></div>
       <div class="grid-2">
-        <div class="card"><h2>Load</h2><div class="chart" data-chart="gpu-usage"></div></div>
-        <div class="card"><h2>Power draw</h2><div class="chart" data-chart="gpu-power"></div></div>
+        <div class="card"><h2>Dedicated GPU load</h2><div class="chart" data-chart="gpu-usage"></div></div>
+        <div class="card"><h2>Dedicated GPU power</h2><div class="chart" data-chart="gpu-power"></div></div>
       </div>
-      <div class="card"><h2>Temperature</h2><div class="chart" data-chart="gpu-temp"></div></div>
+      <div class="card"><h2>Dedicated GPU temperature</h2><div class="chart" data-chart="gpu-temp"></div></div>
+    </section>
+
+    <section class="view" id="view-energy">
+      <div class="page-head"><h1>Power draw</h1><p class="hint">Watts per component, measured live. CPU figures come from the processor's own energy counters (RAPL).</p></div>
+      <div class="grid-2 energy-top">
+        <div class="card"><h2>Right now</h2><div id="energy-donut"></div></div>
+        <div class="card"><h2>Component power</h2><div class="kv" id="energy-kv"></div>
+          <p class="hint" id="energy-note"></p></div>
+      </div>
+      <div class="card"><h2>Watts over time</h2><div class="chart tall" data-chart="energy"></div></div>
+      <div class="card"><h2>Energy used this session</h2>
+        <div class="table-wrap"><table id="energy-table"></table></div>
+        <div class="toolbar"><button class="btn" id="energy-reset">Reset counters</button><span class="hint" id="energy-since"></span></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-fans">
+      <div class="page-head"><h1>Fans &amp; sensors</h1><p class="hint" id="sensor-sources"></p></div>
+      <div class="fan-grid" id="fan-cards"></div>
+      <div class="card" id="fan-control-card" hidden><h2>Fan control</h2>
+        <div class="switch-row">
+          <div><b>Maximum fan speed</b><div class="hint">Runs both fans at full speed (HP OMEN / Victus BIOS). Turn off to return to automatic control.</div></div>
+          <label class="switch"><input type="checkbox" id="max-fan"><span class="slider"></span></label>
+        </div>
+      </div>
+      <div class="card"><h2>Fan speed</h2><div class="chart" data-chart="fans"></div></div>
+      <div class="card" id="sensor-help"><h2>Not seeing your fans?</h2>
+        <p class="hint">Windows has no standard fan API. OMNI reads fans from the HP BIOS on OMEN/Victus laptops, and from
+          <b>LibreHardwareMonitor</b> or <b>HWiNFO</b> on almost any other laptop or desktop. Start one of them and OMNI picks up every sensor it can see:</p>
+        <ul class="hint"><li>LibreHardwareMonitor: run it as administrator (its WMI provider is on by default).</li>
+          <li>HWiNFO: Settings → enable <i>Shared Memory Support</i>.</li></ul>
+      </div>
+      <div class="card"><h2>All sensors</h2><div class="table-wrap"><table id="sensor-table"></table></div></div>
     </section>
 
     <section class="view" id="view-battery">
-      <h1>Battery</h1>
-      <div class="grid-2">
+      <div class="page-head"><h1>Battery</h1></div>
+      <div class="grid-2 battery-top">
         <div class="card battery-hero" id="battery-hero"></div>
         <div class="card"><div class="kv" id="battery-kv"></div></div>
       </div>
@@ -83,7 +131,7 @@
     </section>
 
     <section class="view" id="view-storage">
-      <h1>Memory &amp; storage</h1>
+      <div class="page-head"><h1>Memory &amp; storage</h1></div>
       <div class="card"><h2>Memory</h2><div id="memory"></div></div>
       <div class="card"><h2>Drives</h2><div id="volumes"></div></div>
       <div class="card"><h2>SSD health</h2><div class="table-wrap"><table id="disks"></table></div>
@@ -91,14 +139,65 @@
       <div class="card"><h2>Disk activity</h2><div class="chart" data-chart="disk-io"></div></div>
     </section>
 
+    <section class="view" id="view-ram">
+      <div class="page-head"><h1>RAM map</h1><p class="hint">Where every page of physical memory is right now, like Sysinternals RAMMap.</p></div>
+      <div class="card"><h2>Physical memory</h2><div id="ram-lists"></div>
+        <p class="hint"><b>Standby</b> is cached data Windows can hand out instantly, so it counts as available. <b>Modified</b> pages still have to be written to disk before reuse.</p></div>
+      <div class="grid-2">
+        <div class="card"><h2>What "in use" is made of</h2><div id="ram-active"></div>
+          <p class="hint">From Windows' memory counters. "Shared &amp; other" covers mapped files, shared DLLs, page tables and kernel stacks.</p></div>
+        <div class="card"><h2>Standby list by priority</h2><div id="ram-priority"></div>
+          <p class="hint">Windows reuses priority 0 first and keeps 5–7 (frequently used data) longest.</p></div>
+      </div>
+      <div class="card"><h2>Commit &amp; paging</h2><div class="kv" id="ram-kv"></div></div>
+      <div class="card"><h2>Empty</h2>
+        <p class="hint" id="ram-admin-note">These are RAMMap's "Empty" commands. Free memory is not faster memory: Windows refills the cache as you work, so use these for testing or to recover from a leak.</p>
+        <div class="command-grid" id="ram-commands"></div>
+        <div id="ram-command-result"></div>
+      </div>
+      <div class="card"><h2>Processes by memory</h2>
+        <p class="hint">Working set = RAM the process is using now. Private = memory only it can use (committed). "Trim" pushes its pages out; they come back as it touches them.</p>
+        <div class="table-wrap"><table id="ram-procs"></table></div></div>
+    </section>
+
+    <section class="view" id="view-internet">
+      <div class="page-head"><h1>Internet test</h1><p class="hint">Speed, latency and bufferbloat against Cloudflare's nearest server, plus ping, DNS and Wi-Fi checks.</p></div>
+      <div class="grid-2 speed-top">
+        <div class="card speed-card">
+          <div id="speed-gauge"></div>
+          <div class="phases" id="speed-phases">
+            <span data-phase="latency">Latency</span><span data-phase="download">Download</span><span data-phase="upload">Upload</span>
+          </div>
+          <div class="toolbar center">
+            <label class="check"><input type="checkbox" value="latency" checked> Latency</label>
+            <label class="check"><input type="checkbox" value="download" checked> Download</label>
+            <label class="check"><input type="checkbox" value="upload" checked> Upload</label>
+          </div>
+          <div class="toolbar center"><button class="btn primary big" id="speed-start">Start test</button></div>
+          <p class="hint center" id="speed-status">Uses about 300 MB of data on a fast line. Streams and duration are in Settings → Internet.</p>
+        </div>
+        <div class="card"><h2>Result</h2><div class="result-grid" id="speed-result"></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><h2>Ping &amp; packet loss</h2>
+          <div class="toolbar"><button class="btn" id="diag-start">Run checks</button><span class="hint" id="diag-status">TCP ping to three networks, and a DNS server comparison.</span></div>
+          <div class="table-wrap"><table id="ping-table"></table></div></div>
+        <div class="card"><h2>DNS servers</h2><div id="dns-bars"><p class="hint">Run the checks to compare DNS lookup times.</p></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><h2>Wi-Fi</h2><div class="kv" id="wifi-kv"></div></div>
+        <div class="card"><h2>Past speed tests</h2><div class="chart" data-chart="speed-history"></div></div>
+      </div>
+    </section>
+
     <section class="view" id="view-network">
-      <h1>Network</h1>
+      <div class="page-head"><h1>Network</h1></div>
       <div class="card"><div class="kv" id="net-kv"></div></div>
       <div class="card"><h2>Throughput</h2><div class="chart" data-chart="net-io"></div></div>
     </section>
 
     <section class="view" id="view-processes">
-      <h1>Processes</h1>
+      <div class="page-head"><h1>Processes</h1></div>
       <div class="card">
         <div class="toolbar">
           <div class="segmented" id="proc-sort">
@@ -112,7 +211,7 @@
     </section>
 
     <section class="view" id="view-power">
-      <h1>Power</h1>
+      <div class="page-head"><h1>Power plans</h1></div>
       <div class="card"><h2>Power plan</h2><div id="plans" class="choice-list"></div></div>
       <div class="card"><h2>Windows power mode</h2>
         <div class="segmented" id="power-mode">
@@ -131,9 +230,9 @@
     </section>
 
     <section class="view" id="view-cleanup">
-      <h1>Cleanup</h1>
+      <div class="page-head"><h1>Cleanup</h1></div>
       <div class="card">
-        <p class="hint" id="cleanup-intro">Scan first. Only files older than the age set in Settings are removed, and files in use are skipped.</p>
+        <p class="hint">Scan first. Only files older than the age set in Settings are removed, and files in use are skipped.</p>
         <div class="toolbar"><button class="btn primary" id="cleanup-scan">Scan</button></div>
         <div class="table-wrap"><table id="cleanup-table"></table></div>
         <div class="toolbar"><button class="btn danger" id="cleanup-run" hidden>Delete selected</button></div>
@@ -142,10 +241,10 @@
     </section>
 
     <section class="view" id="view-bench">
-      <h1>Benchmarks</h1>
+      <div class="page-head"><h1>Benchmarks</h1></div>
       <div class="bench-grid" id="bench-cards"></div>
       <div class="card"><h2>Stress test</h2>
-        <p class="hint">Runs the CPU and/or GPU at full load and watches clocks, temperature and power limits. Plug in first.</p>
+        <p class="hint">Runs the CPU and/or GPU at full load and watches clocks, temperature, power limits and fans. Plug in first.</p>
         <div class="toolbar">
           <div class="segmented" id="stress-target">
             <button data-target="cpu" class="active">CPU</button>
@@ -164,7 +263,7 @@
     </section>
 
     <section class="view" id="view-history">
-      <h1>History</h1>
+      <div class="page-head"><h1>History</h1></div>
       <div class="toolbar">
         <div class="segmented" id="history-range">
           <button data-range="1h" class="active">1 h</button>
@@ -178,15 +277,17 @@
       <div class="grid-2">
         <div class="card"><h2>Usage</h2><div class="chart" data-chart="h-usage"></div></div>
         <div class="card"><h2>Temperature</h2><div class="chart" data-chart="h-temps"></div></div>
+        <div class="card"><h2>Power draw</h2><div class="chart" data-chart="h-power"></div></div>
+        <div class="card"><h2>Fan speed</h2><div class="chart" data-chart="h-fans"></div></div>
         <div class="card"><h2>Battery level</h2><div class="chart" data-chart="h-batt"></div></div>
         <div class="card"><h2>GPU power</h2><div class="chart" data-chart="h-gpu-power"></div></div>
       </div>
     </section>
 
     <section class="view" id="view-settings">
-      <h1>Settings</h1>
+      <div class="page-head"><h1>Settings</h1></div>
       <form id="settings-form" class="settings"></form>
-      <div class="toolbar">
+      <div class="toolbar sticky-actions">
         <button class="btn primary" id="settings-save">Save</button>
         <button class="btn" id="settings-reset">Reset to defaults</button>
         <span id="settings-status" class="hint"></span>
@@ -197,6 +298,7 @@
 
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="/static/charts.js"></script>
+  <script src="/static/components.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

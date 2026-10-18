@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.1.0 — 2026-10-18: watts, fans, every GPU, RAM map, Internet test, new UI
+
+### New views
+- **Power draw:**
+  - Live watts per component: CPU package, CPU cores, integrated GPU, the rest of the CPU, and the dedicated GPU.
+  - On battery it also shows the whole laptop's draw.
+  - Comes with a breakdown donut, a watts-over-time chart and energy used this session (Wh).
+  - CPU figures come from Windows' Energy Meter counters (Intel/AMD RAPL), with no driver needed.
+- **Fans & sensors:**
+  - Spinning fan cards whose speed follows the real RPM, plus a fan-speed chart and a table of every sensor.
+  - **HP OMEN / Victus:** fan RPM, BIOS temperature and a Max-fan switch, through the HP WMI BIOS (the calls OmenMon uses).
+  - **Any other laptop or desktop:** bridges to **LibreHardwareMonitor / OpenHardwareMonitor** (WMI) and **HWiNFO** (shared memory).
+- **Graphics:** every GPU (integrated and dedicated, Intel/AMD/NVIDIA) from Windows' GPU counters, with per-engine load and dedicated/shared memory. Reading these doesn't wake a sleeping Optimus GPU.
+- **RAM map** (after Sysinternals RAMMap):
+  - Physical memory as in use / modified / standby / free / zeroed, from `NtQuerySystemInformation(SystemMemoryListInformation)`.
+  - What "in use" is made of, and the standby list by priority 0–7.
+  - Commit and page faults, plus the top processes by working set with a per-process **Trim**.
+  - RAMMap's **Empty** commands (working sets, modified list, standby, low-priority standby, system working set), each showing before → after (needs administrator).
+- **Internet test:**
+  - Speedometer with latency, jitter, download, upload, latency under load and a **bufferbloat grade**, against Cloudflare's nearest server. You choose the parts, the number of streams and the duration.
+  - TCP ping and packet loss to Cloudflare, Google and Quad9.
+  - **DNS comparison** of your current DNS against 1.1.1.1, 8.8.8.8 and 9.9.9.9, with every server queried the same way.
+  - **Wi-Fi details:** signal, RSSI, band, channel, standard, link speed and security.
+  - Past results are shown as a trend.
+
+### CPU
+- **Every thread** is drawn as a 3D cylinder showing its load, grouped into performance and efficiency cores on hybrid CPUs.
+- **Live clocks per thread:** E-cores show speed relative to their own base clock, because Windows only reports the P-core base clock (the E-core figure would otherwise be wrong, e.g. "5 GHz").
+- **Package, core and iGPU watts** in a gauge and a chart.
+
+### UI / UX
+- **Overview:** 8 animated radial gauges (CPU load, temperature, watts, GPU load, temperature, memory, fans, battery).
+- **Animations:**
+  - number tweens and smooth gauge/bar transitions
+  - view transitions and card entrance animations
+  - a liquid battery cell with a wave while charging, and a pulsing live indicator
+  - A **Settings → Animations** switch turns them off, and Windows' reduced-motion setting is respected.
+- **Layout:**
+  - grouped sidebar with icons
+  - live stats in the top bar
+  - toggle switches
+  - axis steps that avoid labels like "3.8k"
+  - back/forward and `#view` links work
+- New settings groups: Display, Sensors & fans, Internet test.
+
+### Commands
+- `omni speedtest [--parts …] [--diagnostics]` and `omni ram [--empty standby_low|…]`.
+
+### Quality
+- 43 pytest tests. The speed test runs against a local fake server, so tests use no Internet data.
+- The history database upgrades itself with the new columns.
+
 ## 2.0.0 — 2026-10-17: full rewrite
 
 OMNI 2.0 replaces ubat / OMNI 1.x (PowerShell scripts + a 2,177-line Python TUI + a

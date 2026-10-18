@@ -33,6 +33,8 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 | `omni power plan "Balanced"` · `omni power mode efficiency` | Switch plan / power mode |
 | `omni power tweak boost_on_battery 0` · `omni power restore` | Change / undo a battery tweak |
 | `omni clean` · `omni clean --run user_temp crash_dumps` | Scan / delete junk files |
+| `omni speedtest [--diagnostics]` | Internet speed, latency, bufferbloat (+ ping & DNS comparison) |
+| `omni ram` · `omni ram --empty standby_low` | RAM map and RAMMap-style Empty commands (admin) |
 | `omni history export --range 7d -o week.csv` | Export recorded telemetry |
 | `omni settings get` · `omni settings set units.temperature F` | View / change settings |
 
@@ -46,11 +48,20 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 | SSD | Storage reliability counters | Health, temperature, wear |
 | Memory, disk I/O, network, processes | psutil | Process CPU % uses Task Manager's scale |
 
+| Watts per component | Windows Energy Meter (RAPL) + NVML + battery discharge | CPU package/cores/iGPU, dGPU, whole laptop on battery |
+| Every GPU | DXGI + Windows GPU counters | Intel, AMD, NVIDIA; per-engine load and memory |
+| Fans | HP WMI BIOS · LibreHardwareMonitor · HWiNFO | RPM on most PCs; Max-fan switch on HP OMEN/Victus |
+| RAM map | `NtQuerySystemInformation` memory lists + counters | Standby by priority, modified, free, zeroed |
+
 ## Dashboard sections
 
-Overview · CPU · GPU · Battery · Memory & storage · Network · Processes · Power · Cleanup ·
-Benchmarks (+ stress test) · History (1 h to 30 days, CSV export) · Settings.
-Light and dark themes, works at phone width.
+**Monitor:** Overview (8 live gauges) · CPU (3D cylinder per thread) · Graphics · Power draw ·
+Fans & sensors · Battery · Memory & storage · RAM map · Network · Processes.
+**Tools:** Internet test · Power plans · Cleanup · Benchmarks (+ stress test) · History.
+**App:** Settings. Light and dark themes, animations (can be turned off), works at phone width.
+
+**Fans on other PCs:** Windows has no standard fan API. Start LibreHardwareMonitor (as administrator)
+or HWiNFO with *Shared Memory Support* on, and OMNI shows every fan and sensor they can read.
 
 ## Settings
 

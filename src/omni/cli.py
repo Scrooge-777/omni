@@ -216,6 +216,62 @@ def cmd_clean(args):
             console.print(f"  {cat['key']}: {cat['error']}")
 
 
+def cmd_speedtest(args):
+    from omni import nettest
+
+    settings = Settings()
+    parts = args.parts or ["latency", "download", "upload"]
+    try:
+        result = nettest.speed_test(settings.get("network", "speedtest_server"), parts,
+                                    settings.get("network", "streams"), settings.get("network", "seconds"),
+                                    lambda f, message, live=None: console.print(f"  [{f * 100:5.1f} %] {message:<28}", end="\r"))
+    except nettest.NetTestError as exc:
+        sys.exit(str(exc))
+    console.print(" " * 60, end="\r")
+    console.print(f"Server: Cloudflare {result.get('colo') or '?'} ({result.get('country') or '?'})")
+    for key, label, unit_ in [("download_mbps", "Download", "Mbps"), ("upload_mbps", "Upload", "Mbps"),
+                              ("latency_ms", "Latency", "ms"), ("jitter_ms", "Jitter", "ms"),
+                              ("loaded_latency_ms", "Latency under load", "ms")]:
+        if result.get(key) is not None:
+            console.print(f"  {label:<20} {result[key]} {unit_}")
+    if result.get("bufferbloat_grade"):
+        console.print(f"  {'Bufferbloat grade':<20} {result['bufferbloat_grade']}")
+    if args.diagnostics:
+        diag = nettest.diagnostics()
+        for row in diag["ping"]:
+            console.print(f"  ping {row['name']:<11} {row['latency_ms']} ms  loss {row['loss_pct']} %")
+        for row in diag["dns"]:
+            console.print(f"  DNS  {row['resolver']:<14} {row['median_ms']} ms{'  (current)' if row.get('current') else ''}")
+
+
+def cmd_ram(args):
+    from omni import memory
+
+    d = Settings().get("units", "data")
+    if args.empty:
+        try:
+            r = memory.run_command(args.empty)
+        except memory.MemoryError_ as exc:
+            sys.exit(str(exc))
+        console.print(f"{r['label']}: done in {r['seconds']} s")
+        for key in ("standby", "modified", "free"):
+            console.print(f"  {key:<9} {units.data_size(r['before'].get(key), d)} → {units.data_size(r['after'].get(key), d)}")
+        return
+    ram = memory.MemoryMap()
+    time.sleep(1.0)
+    m = ram.read()
+    table = Table(title="RAM map", show_header=False, title_justify="left")
+    rows = [("Total", m["total"]), ("In use", m["active"]), *[(f"  {k.replace('_', ' ')}", v) for k, v in m["active_parts"].items()],
+            ("Modified", m["modified"]), ("Standby (cache)", m["standby"]), ("Free", m["free"]), ("Zeroed", m["zeroed"])]
+    for label, value in rows:
+        table.add_row(label, units.data_size(value, d))
+    if m["standby_by_priority"]:
+        table.add_row("Standby by priority", " · ".join(f"{i}: {units.data_size(v, d)}" for i, v in enumerate(m["standby_by_priority"])))
+    table.add_row("Committed", f"{units.data_size(m['committed'], d)} of {units.data_size(m['commit_limit'], d)}")
+    console.print(table)
+    console.print("Empty commands (admin): " + ", ".join(memory.COMMANDS) + "  e.g. omni ram --empty standby_low")
+
+
 def cmd_history(args):
     from omni.history import History
 
@@ -282,6 +338,15 @@ def build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("clean", help="scan (default) or delete junk files")
     c.add_argument("--run", nargs="+", metavar="CATEGORY", help="categories to delete")
     c.set_defaults(func=cmd_clean)
+
+    sp = sub.add_parser("speedtest", help="internet speed test (Cloudflare)")
+    sp.add_argument("--parts", nargs="+", choices=["latency", "download", "upload"])
+    sp.add_argument("--diagnostics", action="store_true", help="also ping 3 networks and compare DNS servers")
+    sp.set_defaults(func=cmd_speedtest)
+
+    r = sub.add_parser("ram", help="RAM map (RAMMap-style) and memory list commands")
+    r.add_argument("--empty", choices=["working_sets", "modified", "standby", "standby_low", "system_ws"])
+    r.set_defaults(func=cmd_ram)
 
     h = sub.add_parser("history", help="export recorded telemetry as CSV")
     h.add_argument("action", choices=["export"])

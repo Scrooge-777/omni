@@ -101,3 +101,14 @@ def test_input_validation(client):
     assert client.post("/api/stress", headers=auth(), json={"target": "cpu", "seconds": 5}).status_code == 400
     assert client.post("/api/cleanup/run", headers=auth(), json={"categories": ["../../etc"]}).status_code == 400
     assert client.get("/api/jobs/999", headers=auth()).status_code == 404
+    assert client.post("/api/net/speedtest", headers=auth(), json={"parts": ["everything"]}).status_code == 400
+    assert client.post("/api/net/speedtest", headers=auth(), json={"parts": "latency"}).status_code == 400
+    assert client.post("/api/memory/command", headers=auth(), json={"command": "format_c"}).status_code == 400
+    assert client.post("/api/fans/max", headers=auth(), json={"on": "yes"}).status_code == 400
+
+
+def test_memory_map_endpoint(client):
+    data = client.get("/api/memory/map", headers=auth()).json()
+    assert {"map", "processes", "admin", "commands"} <= set(data)
+    assert data["map"]["total"] > 0
+    assert "standby" in data["commands"]

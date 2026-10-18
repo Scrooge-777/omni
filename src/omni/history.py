@@ -13,6 +13,7 @@ METRICS = [
     "gpu_pct", "gpu_temp_c", "gpu_w",
     "batt_pct", "batt_w", "plugged",
     "disk_read_bps", "disk_write_bps", "net_down_bps", "net_up_bps",
+    "cpu_w", "cpu_cores_w", "igpu_w", "system_w", "fan_rpm",
 ]
 
 SCHEMA = f"""
@@ -26,8 +27,12 @@ CREATE TABLE IF NOT EXISTS bench_results (
 
 def sample_from_snapshot(snap: dict) -> dict:
     cpu, gpu, batt = snap.get("cpu", {}), snap.get("gpu", {}), snap.get("battery", {})
-    storage, net = snap.get("storage", {}), snap.get("network", {})
+    storage, net, power = snap.get("storage", {}), snap.get("network", {}), snap.get("power", {})
+    fan_speeds = [f["rpm"] for f in snap.get("fans", []) if f.get("rpm") is not None]
     return {
+        "cpu_w": power.get("cpu_package_w"), "cpu_cores_w": power.get("cpu_cores_w"),
+        "igpu_w": power.get("igpu_w"), "system_w": power.get("system_w"),
+        "fan_rpm": max(fan_speeds) if fan_speeds else None,
         "cpu_pct": cpu.get("usage_pct"), "cpu_temp_c": cpu.get("temp_c"), "cpu_mhz": cpu.get("clock_mhz"),
         "ram_pct": snap.get("memory", {}).get("usage_pct"),
         "gpu_pct": gpu.get("util_pct"), "gpu_temp_c": gpu.get("temp_c"), "gpu_w": gpu.get("power_w"),
@@ -45,6 +50,12 @@ class History:
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.executescript(SCHEMA)
         self._db.execute("PRAGMA journal_mode=WAL")
+        # Databases from older versions lack newer metric columns: add them in place.
+        existing = {row[1] for row in self._db.execute("PRAGMA table_info(samples)")}
+        for metric in METRICS:
+            if metric not in existing:
+                self._db.execute(f"ALTER TABLE samples ADD COLUMN {metric} REAL")
+        self._db.commit()
 
     def add_sample(self, sample: dict, ts: float | None = None):
         values = [sample.get(m) for m in METRICS]

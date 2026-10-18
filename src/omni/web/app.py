@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from omni import __version__, bench, cleanup, power, win
+from omni import __version__, bench, cleanup, memory, nettest, power, win
 from omni.collector import Collector
 from omni.config import SCHEMA, SettingsError, home_dir
 from omni.jobs import JobBusy, JobManager
@@ -33,7 +33,8 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
     token = token or secrets.token_urlsafe(24)
     settings = collector.settings
     jobs = JobManager(on_done=lambda job: collector.history.add_bench_result(job.kind, job.result)
-                      if job.kind.startswith("bench") else None)
+                      if job.kind.startswith("bench") or job.kind == "speedtest" else None)
+    ram = memory.MemoryMap()
     tweaks = power.TweakManager(home_dir())
     app = FastAPI(title="OMNI", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = token
@@ -78,7 +79,7 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
         snap = collector.latest() or {}
         return {"version": __version__, "admin": win.is_admin(), "cpu": snap.get("cpu", {}).get("name"),
                 "gpu": collector.gpu.name, "gpu_error": collector.gpu.error, "battery": collector.battery.present,
-                "data_dir": str(home_dir())}
+                "sensor_sources": snap.get("sources", []), "data_dir": str(home_dir())}
 
     @app.get("/api/live")
     def live(seconds: int = 300):
@@ -146,6 +147,67 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
             return terminate(pid, settings.protected_processes())
         except ProcessError as exc:
             raise HTTPException(400, str(exc)) from None
+
+    # ------------------------------------------------------------------ fans & energy
+
+    @app.post("/api/fans/max")
+    async def fans_max(request: Request):
+        on = (await request.json()).get("on")
+        if not isinstance(on, bool):
+            raise HTTPException(400, "on must be true or false")
+        try:
+            return {"max_fan": await run_blocking(collector.set_max_fan, on)}
+        except RuntimeError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.post("/api/energy/reset")
+    def energy_reset():
+        collector.reset_energy()
+        return {"ok": True}
+
+    # ------------------------------------------------------------------ RAM map
+
+    @app.get("/api/memory/map")
+    async def memory_map():
+        def read():
+            return {"map": ram.read(), "processes": ram.top_processes(), "admin": win.is_admin(),
+                    "commands": {k: {"label": v[1], "help": v[2]} for k, v in memory.COMMANDS.items()}}
+        return await run_blocking(read)
+
+    @app.post("/api/memory/command")
+    async def memory_command(request: Request):
+        name = (await request.json()).get("command")
+        try:
+            return await run_blocking(memory.run_command, str(name))
+        except memory.MemoryError_ as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.post("/api/memory/trim/{pid}")
+    async def memory_trim(pid: int):
+        try:
+            return await run_blocking(memory.trim_process, pid, settings.protected_processes())
+        except memory.MemoryError_ as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    # ------------------------------------------------------------------ internet
+
+    @app.post("/api/net/speedtest")
+    async def net_speedtest(request: Request):
+        body = await request.json()
+        parts = body.get("parts") or ["latency", "download", "upload"]
+        if not isinstance(parts, list) or not set(parts) <= {"latency", "download", "upload"} or not parts:
+            raise HTTPException(400, "parts must be a list of latency/download/upload")
+        server = settings.get("network", "speedtest_server")
+        streams, seconds = settings.get("network", "streams"), settings.get("network", "seconds")
+        return start_job("speedtest", lambda job: nettest.speed_test(server, parts, streams, seconds, job.update, job.stop))
+
+    @app.post("/api/net/diagnostics")
+    def net_diagnostics():
+        return start_job("netdiag", lambda job: nettest.diagnostics(job.update, job.stop))
+
+    @app.get("/api/net/wifi")
+    async def net_wifi():
+        return await run_blocking(nettest.wifi_info)
 
     # ------------------------------------------------------------------ power
 

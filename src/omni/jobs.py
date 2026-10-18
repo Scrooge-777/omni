@@ -19,15 +19,17 @@ class Job:
         self.error = None
         self.started = time.time()
         self.finished = None
+        self.live = None  # a live reading for the UI, e.g. current Mbps during a speed test
         self.stop = threading.Event()
 
-    def update(self, progress: float, message: str):
+    def update(self, progress: float, message: str, live=None):
         self.progress = max(0.0, min(1.0, progress))
         self.message = message
+        self.live = live
 
     def as_dict(self) -> dict:
         return {"id": self.id, "kind": self.kind, "status": self.status, "progress": round(self.progress, 3),
-                "message": self.message, "result": self.result, "error": self.error,
+                "message": self.message, "live": self.live, "result": self.result, "error": self.error,
                 "started": self.started, "finished": self.finished}
 
 
