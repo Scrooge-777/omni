@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omni-monitor"
-version = "2.3.0"
+version = "2.3.1"
 description = "OMNI: laptop hardware telemetry, battery health, benchmarks and power tuning for Windows"
 readme = "README.md"
 license = "MIT"

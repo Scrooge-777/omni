@@ -73,3 +73,10 @@ def test_numeric_fans_from_cim_sensors():
     fans = numeric_fans(rows, "Dell Command | Monitor", "Dell")
     assert [(f["name"], f["rpm"]) for f in fans] == [("CPU Fan", 2450), ("Video Fan", 1800)]
     assert fans[0]["source"] == "Dell Command | Monitor"
+
+
+def test_gpu_median_drops_single_garbage_sample():
+    from omni.sensors.gpu import median_of
+    history = []
+    out = [median_of(history, v) for v in (27.7, 27.8, 160.6, 27.4, 27.9)]
+    assert max(out) < 30 and median_of(history, None) is None

@@ -37,8 +37,21 @@ def decode_reasons(mask: int) -> list[str]:
     return [label for bit, label in CLOCK_EVENT_REASONS.items() if mask & bit]
 
 
+def median_of(history: list, value):
+    """Median of the last five readings. NVML returns the odd garbage sample (power ~160 W with the
+    clock at 0 MHz on an idle GPU, every ~10 s); a median of five drops one or two in a row."""
+    if value is None:
+        return None
+    history.append(value)
+    del history[:-5]
+    return sorted(history)[len(history) // 2]
+
+
 class GpuSensor:
     def __init__(self):
+        self._power_history: list = []
+        self._clock_history: list = []
+        self._last_util = None
         self.lib = None
         self.handle = None
         self.name = None
@@ -93,6 +106,12 @@ class GpuSensor:
             return {"available": False, "error": self.error}
         util = _Utilization()
         util_ok = self.lib.nvmlDeviceGetUtilizationRates(self.handle, byref(util)) == 0
+        if util_ok:
+            self._last_util = (util.gpu, util.memory)
+        elif self._last_util:
+            # One failed call while the GPU is still awake is a glitch, not "no data": keep the last value.
+            util.gpu, util.memory = self._last_util
+            util_ok = self.lib.nvmlDeviceGetPerformanceState(self.handle, byref(c_int())) == 0
         mem = _Memory()
         mem_ok = self.lib.nvmlDeviceGetMemoryInfo(self.handle, byref(mem)) == 0
         pstate = c_int()
@@ -104,6 +123,8 @@ class GpuSensor:
         power = self._uint("nvmlDeviceGetPowerUsage", scale=1000)
         if power is not None and (power < 0 or power > 1000):
             power = None  # a GPU entering deep sleep can return garbage instead of an error code
+        power = median_of(self._power_history, power)
+        clock = median_of(self._clock_history, self._uint("nvmlDeviceGetClockInfo", CLOCK_GRAPHICS))
         return {
             "available": True,
             "name": self.name,
@@ -116,7 +137,7 @@ class GpuSensor:
             "mem_util_pct": util.memory if util_ok else None,
             "vram_used": mem.used if mem_ok else None,
             "vram_total": mem.total if mem_ok else None,
-            "clock_mhz": self._uint("nvmlDeviceGetClockInfo", CLOCK_GRAPHICS),
+            "clock_mhz": clock,
             "mem_clock_mhz": self._uint("nvmlDeviceGetClockInfo", CLOCK_MEM),
             "max_clock_mhz": self.max_graphics_mhz,
             "pstate": f"P{pstate.value}" if pstate_ok else None,

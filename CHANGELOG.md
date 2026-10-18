@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.1 — 2026-10-18: GPU graph spikes fixed
+
+- **GPU power and clock spikes:** every ~10 s the NVIDIA driver returned one bad sample on an idle GPU (about 160 W with the clock at 0–180 MHz, against a real ~28 W). The charts plotted it as a spike. A median of the last five readings now drops it.
+- **GPU load gaps:** the same glitch made the utilization call fail, leaving gaps in the GPU load line. The last good value is now held.
+
 ## 2.3.0 — 2026-10-18: works on any PC, Internet test fixed
 
 - **Your device:** the Fans & sensors page now starts by identifying the PC:
