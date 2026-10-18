@@ -136,11 +136,16 @@ const CHARTS = {
   'h-gpu-power': [[['gpu_w', 'Power']], { min: 0, format: wattsAxis }],
 };
 
+// Charts fed from the live stream scroll in a fixed window; the rest fit their own data.
+const FITTED_CHARTS = new Set(['batt-capacity', 'stress', 'speed-history']);
+
 function chart(name) {
   if (!state.charts[name]) {
     const [series, opts] = CHARTS[name];
     const node = document.querySelector(`[data-chart="${name}"]`);
-    state.charts[name] = new Charts.LineChart(node, series.map(([key, label], i) => ({ key, label, color: `--series-${i + 1}` })), opts);
+    const live = !name.startsWith('h-') && !FITTED_CHARTS.has(name);
+    state.charts[name] = new Charts.LineChart(node, series.map(([key, label], i) => ({ key, label, color: `--series-${i + 1}` })),
+      { ...opts, live, area: series.length === 1 });
   }
   return state.charts[name];
 }
@@ -185,7 +190,8 @@ function connect() {
     state.snap = snap;
     const last = state.live[state.live.length - 1];
     if (!last || last.ts !== snap.ts) state.live.push(compact(snap));
-    if (state.live.length > 600) state.live.splice(0, state.live.length - 600);
+    const cutoff = snap.ts - 960; // keep a little more than the longest chart window (15 min)
+    while (state.live.length && state.live[0].ts < cutoff) state.live.shift();
     render();
   };
   socket.onclose = () => {
@@ -235,13 +241,27 @@ function renderAlerts(alerts) {
     el('span', {}, a.message))));
 }
 
+const topbarChips = {};
 function renderTopbar(snap) {
   const p = snap.power || {};
-  const parts = [`CPU ${fmt.pct(snap.cpu.usage_pct)}`, fmt.temp(snap.cpu.temp_c)];
-  if (p.cpu_package_w != null) parts.push(fmt.watts(p.cpu_package_w, 0));
   const fans = (snap.fans || []).map((f) => f.rpm).filter((v) => v != null);
-  if (fans.length) parts.push(fmt.rpm(Math.max(...fans)));
-  $('#topbar-stats').textContent = parts.join('  ·  ');
+  const chips = [
+    ['cpu', 'cpu', snap.cpu.usage_pct, (v) => fmt.pct(v)],
+    ['temp', 'thermo', fmt.tempValue(snap.cpu.temp_c), (v) => (v == null ? '—' : `${Math.round(v)}${fmt.tempUnit()}`)],
+    ['watts', 'bolt', p.cpu_package_w, (v) => fmt.watts(v, 0)],
+    ['fan', 'fan', fans.length ? Math.max(...fans) : null, (v) => fmt.rpm(v)],
+  ];
+  const box = $('#topbar-stats');
+  for (const [key, icon, value, format] of chips) {
+    if (!topbarChips[key]) {
+      const valueNode = el('span');
+      topbarChips[key] = { node: el('span', { class: 'chip', 'data-icon': icon, 'data-size': 14 }, valueNode), valueNode };
+      box.append(topbarChips[key].node);
+      Icons.hydrate(topbarChips[key].node.parentElement);
+    }
+    topbarChips[key].node.hidden = value == null;
+    UI.tween(topbarChips[key].valueNode, value, format, 400);
+  }
 }
 
 function dedicatedGpu(snap) {
@@ -659,11 +679,17 @@ async function loadRam() {
     if (!data.admin) $('#ram-admin-note').textContent += ' Start OMNI as administrator to use them.';
     ram.commandsBuilt = true;
   }
+  const shown = ram.showAll ? data.processes : data.processes.slice(0, 10);
+  const biggest = data.processes[0]?.working_set || 1;
   $('#ram-procs').replaceChildren(
     el('tr', {}, el('th', {}, 'Process'), el('th', { class: 'num' }, 'PID'), el('th', { class: 'num' }, 'Working set'), el('th', { class: 'num' }, 'Private'), el('th', {}, '')),
-    ...data.processes.map((p) => el('tr', {}, el('td', { class: 'name', title: p.name }, p.name), el('td', { class: 'num' }, p.pid),
-      el('td', { class: 'num' }, fmt.bytes(p.working_set)), el('td', { class: 'num' }, fmt.bytes(p.private)),
-      el('td', {}, el('button', { class: 'btn small', onclick: () => trimProcess(p) }, 'Trim')))));
+    ...shown.map((p) => el('tr', {}, el('td', { class: 'name', title: p.name }, p.name), el('td', { class: 'num' }, p.pid),
+      el('td', { class: 'num' }, el('div', { class: 'cell-bar' }, el('span', { style: `width:${(p.working_set / biggest) * 100}%` }), fmt.bytes(p.working_set))),
+      el('td', { class: 'num' }, fmt.bytes(p.private)),
+      el('td', {}, el('button', { class: 'btn small', onclick: () => trimProcess(p) }, 'Trim')))),
+    data.processes.length > 10 ? el('tr', {}, el('td', { colspan: 5, class: 'more-row' },
+      el('button', { class: 'btn small', onclick: () => { ram.showAll = !ram.showAll; loadRam(); } },
+        ram.showAll ? 'Show fewer' : `Show all ${data.processes.length}`))) : '');
 }
 
 async function runRamCommand(key, label) {
@@ -1118,6 +1144,9 @@ function applyTheme() {
   const theme = state.settings?.general.theme || 'system';
   if (theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
+  const button = $('#theme-btn');
+  button.replaceChildren(Icons.svg({ system: 'monitor', dark: 'moon', light: 'sun' }[theme], 18));
+  button.title = `Theme: ${theme} (click to change)`;
   try { localStorage.setItem('omni-theme', theme); } catch { /* ignore */ }
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.documentElement.classList.toggle('no-anim', reduce || state.settings?.display?.animations === false);
@@ -1144,7 +1173,25 @@ function segmented(selector, attr, onPick) {
   }));
 }
 
+function decoratePages() {
+  // Each page title gets its section's icon in a tinted badge.
+  for (const view of $$('.view')) {
+    const name = view.id.replace('view-', '');
+    const icon = $(`.sidebar button[data-view="${name}"] .nav-icon`)?.dataset.icon;
+    const head = $('.page-head', view);
+    if (!head || !icon || $('.page-icon', head)) continue;
+    const title = el('div', { class: 'page-title' }, ...head.childNodes);
+    head.replaceChildren(el('div', { class: 'page-icon', 'data-icon': icon, 'data-size': 22 }), title);
+  }
+  Icons.hydrate();
+}
+
 async function init() {
+  decoratePages();
+  const windowButtons = $$('#window-select button');
+  const markWindow = () => windowButtons.forEach((b) => b.classList.toggle('active', Number(b.dataset.window) === Charts.getWindow()));
+  windowButtons.forEach((b) => b.addEventListener('click', () => { Charts.setWindow(Number(b.dataset.window)); markWindow(); }));
+  markWindow();
   $$('.sidebar button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
   window.addEventListener('hashchange', () => showView(location.hash.slice(1) || 'overview'));
   $('#menu-btn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
@@ -1187,7 +1234,7 @@ async function init() {
 
   try {
     await loadSettings();
-    state.live = await api('/api/live?seconds=600');
+    state.live = await api('/api/live?seconds=900');
   } catch (err) { toast(err.message); }
   showView(location.hash.slice(1) || 'overview');
   connect();

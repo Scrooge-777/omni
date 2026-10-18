@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.2.0 — 2026-10-18: continuous charts and a cleaner UI
+
+- **Continuous live charts:**
+  - Every live chart now shows a fixed time window that scrolls smoothly, as in Task Manager. Before, the x-axis stretched from when the page was opened, so charts squeezed together the longer OMNI ran.
+  - A window switch in the top bar picks **1 / 2 / 5 / 15 minutes**, and the choice is remembered.
+  - Time labels sit on round clock times and move with the data, and single-series charts get a soft area fill.
+  - The live buffer holds 15 minutes.
+- **Icons:**
+  - A new inline SVG icon set for every section, the theme button (system / dark / light) and the top-bar stat chips.
+  - Every page title has an icon badge.
+- **Layout:**
+  - Live stat chips (CPU, temperature, watts, fan) in the top bar.
+  - At medium widths the sidebar collapses to an icon rail.
+  - The RAM map's process list shows the top 10 with a working-set bar, plus "Show all".
+  - A link to the GitHub repo sits at the foot of the sidebar.
+
 ## 2.1.0 — 2026-10-18: watts, fans, every GPU, RAM map, Internet test, new UI
 
 ### New views

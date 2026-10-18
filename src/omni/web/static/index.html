@@ -11,35 +11,39 @@
 </head>
 <body>
   <header class="topbar">
-    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu">☰</button>
-    <div class="brand"><img src="/static/icon.svg" alt="" width="24" height="24"> OMNI <span class="version">v{{VERSION}}</span></div>
+    <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu" data-icon="menu"></button>
+    <div class="brand"><img src="/static/icon.svg" alt="" width="26" height="26"><span>OMNI</span> <span class="version">v{{VERSION}}</span></div>
     <div class="topbar-stats" id="topbar-stats" aria-hidden="true"></div>
     <div class="topbar-right">
+      <div class="segmented compact" id="window-select" title="Time span of live charts">
+        <button data-window="60">1m</button><button data-window="120">2m</button><button data-window="300">5m</button><button data-window="900">15m</button>
+      </div>
       <span class="conn" id="conn" title="Live connection"><span class="dot"></span><span id="conn-text">Connecting</span></span>
-      <button class="icon-btn" id="theme-btn" aria-label="Switch theme" title="Switch theme">◐</button>
+      <button class="icon-btn" id="theme-btn" aria-label="Switch theme" title="Switch theme"></button>
     </div>
   </header>
 
   <nav class="sidebar" id="sidebar" aria-label="Sections">
     <div class="nav-title">Monitor</div>
-    <button data-view="overview" class="active"><span class="nav-icon">◉</span>Overview</button>
-    <button data-view="cpu"><span class="nav-icon">▦</span>CPU</button>
-    <button data-view="gpu"><span class="nav-icon">◧</span>Graphics</button>
-    <button data-view="energy"><span class="nav-icon">ϟ</span>Power draw</button>
-    <button data-view="fans"><span class="nav-icon">✲</span>Fans &amp; sensors</button>
-    <button data-view="battery"><span class="nav-icon">▮</span>Battery</button>
-    <button data-view="storage"><span class="nav-icon">▤</span>Memory &amp; storage</button>
-    <button data-view="ram"><span class="nav-icon">▥</span>RAM map</button>
-    <button data-view="network"><span class="nav-icon">⇅</span>Network</button>
-    <button data-view="processes"><span class="nav-icon">≡</span>Processes</button>
+    <button data-view="overview" class="active" title="Overview"><span class="nav-icon" data-icon="overview"></span><span class="nav-text">Overview</span></button>
+    <button data-view="cpu" title="CPU"><span class="nav-icon" data-icon="cpu"></span><span class="nav-text">CPU</span></button>
+    <button data-view="gpu" title="Graphics"><span class="nav-icon" data-icon="gpu"></span><span class="nav-text">Graphics</span></button>
+    <button data-view="energy" title="Power draw"><span class="nav-icon" data-icon="bolt"></span><span class="nav-text">Power draw</span></button>
+    <button data-view="fans" title="Fans &amp; sensors"><span class="nav-icon" data-icon="fan"></span><span class="nav-text">Fans &amp; sensors</span></button>
+    <button data-view="battery" title="Battery"><span class="nav-icon" data-icon="battery"></span><span class="nav-text">Battery</span></button>
+    <button data-view="storage" title="Memory &amp; storage"><span class="nav-icon" data-icon="drive"></span><span class="nav-text">Memory &amp; storage</span></button>
+    <button data-view="ram" title="RAM map"><span class="nav-icon" data-icon="ram"></span><span class="nav-text">RAM map</span></button>
+    <button data-view="network" title="Network"><span class="nav-icon" data-icon="network"></span><span class="nav-text">Network</span></button>
+    <button data-view="processes" title="Processes"><span class="nav-icon" data-icon="list"></span><span class="nav-text">Processes</span></button>
     <div class="nav-title">Tools</div>
-    <button data-view="internet"><span class="nav-icon">◎</span>Internet test</button>
-    <button data-view="power"><span class="nav-icon">⏻</span>Power plans</button>
-    <button data-view="cleanup"><span class="nav-icon">⌫</span>Cleanup</button>
-    <button data-view="bench"><span class="nav-icon">⏱</span>Benchmarks</button>
-    <button data-view="history"><span class="nav-icon">↺</span>History</button>
+    <button data-view="internet" title="Internet test"><span class="nav-icon" data-icon="speed"></span><span class="nav-text">Internet test</span></button>
+    <button data-view="power" title="Power plans"><span class="nav-icon" data-icon="plug"></span><span class="nav-text">Power plans</span></button>
+    <button data-view="cleanup" title="Cleanup"><span class="nav-icon" data-icon="broom"></span><span class="nav-text">Cleanup</span></button>
+    <button data-view="bench" title="Benchmarks"><span class="nav-icon" data-icon="timer"></span><span class="nav-text">Benchmarks</span></button>
+    <button data-view="history" title="History"><span class="nav-icon" data-icon="history"></span><span class="nav-text">History</span></button>
     <div class="nav-title">App</div>
-    <button data-view="settings"><span class="nav-icon">⚙</span>Settings</button>
+    <button data-view="settings" title="Settings"><span class="nav-icon" data-icon="settings"></span><span class="nav-text">Settings</span></button>
+    <a class="nav-foot" href="https://github.com/Scrooge-777/omni" target="_blank" rel="noopener" title="Source on GitHub"><span data-icon="github" data-size="16"></span><span class="nav-text">Open source on GitHub</span></a>
   </nav>
 
   <main class="content">
@@ -297,6 +301,7 @@
   </main>
 
   <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/static/icons.js"></script>
   <script src="/static/charts.js"></script>
   <script src="/static/components.js"></script>
   <script src="/static/app.js"></script>

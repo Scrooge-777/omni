@@ -25,7 +25,7 @@ from omni.sensors.gpu import GpuSensor
 from omni.sensors.processes import ProcessSensor
 from omni.sensors.system import MemorySensor, NetworkSensor, StorageSensor
 
-LIVE_BUFFER = 600  # samples kept in memory for live charts (10 min at 1 s)
+LIVE_BUFFER = 1800  # samples kept for live charts: the 15-minute chart window even at 0.5 s refresh
 ENERGY_KEYS = ["cpu_package_w", "cpu_cores_w", "igpu_w", "dram_w", "dgpu_w", "system_w"]
 
 

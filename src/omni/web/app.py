@@ -83,7 +83,7 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
 
     @app.get("/api/live")
     def live(seconds: int = 300):
-        return collector.live_series(min(seconds, 600))
+        return collector.live_series(min(seconds, 900))
 
     @app.get("/api/history")
     def history(metrics: str, range: str = "1h"):
