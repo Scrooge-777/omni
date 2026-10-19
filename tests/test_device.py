@@ -80,3 +80,12 @@ def test_gpu_median_drops_single_garbage_sample():
     history = []
     out = [median_of(history, v) for v in (27.7, 27.8, 160.6, 27.4, 27.9)]
     assert max(out) < 30 and median_of(history, None) is None
+
+
+def test_cli_registers_device_command():
+    from omni import cli
+    parser = cli.build_parser() if hasattr(cli, "build_parser") else None
+    if parser is None:
+        return
+    args = parser.parse_args(["device", "--json"])
+    assert args.func is cli.cmd_device and args.json

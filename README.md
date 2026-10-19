@@ -1,4 +1,4 @@
-# OMNI 2.0
+# OMNI
 
 A laptop telemetry and tuning tool for Windows: live hardware dashboard, battery health,
 real benchmarks, stress tests with throttling detection, safe cleanup and reversible
@@ -14,7 +14,8 @@ power tweaks. A ground-up rewrite of [ubat](https://github.com/Scrooge-777/ubat)
 ## Quick start
 
 ```powershell
-cd S:\Works\Projects\omni
+git clone https://github.com/Scrooge-777/omni
+cd omni
 pip install -e .
 omni            # opens the web dashboard at http://localhost:5050
 ```
@@ -27,6 +28,7 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 | `omni tui` | Terminal dashboard (`q` quit, `s` sort processes) |
 | `omni status [--json]` | One-shot summary |
 | `omni battery` | Battery health report |
+| `omni device [--json]` | Identify this PC and list what OMNI can read and change on it |
 | `omni bench cpu\|memory\|disk\|gpu\|all` | Benchmarks (saved to history) |
 | `omni stress cpu\|gpu\|both --seconds 120` | Stress test with throttling report |
 | `omni power list` | Plans, Windows power mode, battery tweaks |
@@ -47,7 +49,6 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 | Battery | psutil, `root/wmi` battery classes, `powercfg /batteryreport` | Real design capacity, health %, wear, cycles, charge/discharge W, voltage |
 | SSD | Storage reliability counters | Health, temperature, wear |
 | Memory, disk I/O, network, processes | psutil | Process CPU % uses Task Manager's scale |
-
 | Watts per component | Windows Energy Meter (RAPL) + NVML + battery discharge | CPU package/cores/iGPU, dGPU, whole laptop on battery |
 | Every GPU | DXGI + Windows GPU counters | Intel, AMD, NVIDIA; per-engine load and memory |
 | Fans | HP WMI BIOS · Dell Command \| Monitor · HP business BIOS · Lenovo Gaming Zone · Win32_Fan · LibreHardwareMonitor · HWiNFO | RPM on most PCs; Max-fan switch on HP OMEN/Victus |
@@ -60,7 +61,7 @@ Fans & sensors · Battery · Memory & storage · RAM map · Network · Processes
 **Tools:** Internet test · Power plans · Cleanup · Benchmarks (+ stress test) · History.
 **App:** Settings. Light and dark themes, animations (can be turned off), works at phone width.
 
-**Any PC:** the Fans & sensors page identifies the machine (maker, model, line, BIOS) and shows what OMNI can read and change on it, and which maker app handles the rest.
+**Any PC:** `omni device` and the Fans & sensors page identify the machine (maker, model, line, BIOS) and shows what OMNI can read and change on it, and which maker app handles the rest.
 
 **Fans on other PCs:** Windows has no standard fan API. Start LibreHardwareMonitor (as administrator)
 or HWiNFO with *Shared Memory Support* on, and OMNI shows every fan and sensor they can read.

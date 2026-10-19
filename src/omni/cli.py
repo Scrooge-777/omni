@@ -11,7 +11,7 @@ import webbrowser
 from rich.console import Console
 from rich.table import Table
 
-from omni import __version__, bench, cleanup, power, units
+from omni import __version__, bench, cleanup, device, power, units, win
 from omni.config import Settings, SettingsError, home_dir
 
 console = Console()
@@ -108,6 +108,39 @@ def cmd_status(args):
     for alert in snap["alerts"]:
         table.add_row("Alert", alert["message"])
     console.print(table)
+
+
+def cmd_device(args):
+    from omni.collector import Collector
+
+    collector = Collector()
+    collector.refresh_slow(force=True)
+    collector.tick()
+    collector.refresh_sensors()  # fans: the sensor thread isn't running in one-shot mode
+    profile = device.identify()
+    collector.device = profile
+    snap = collector.tick()
+    caps = device.capabilities(profile, snap, snap.get("sources", []), win.is_admin())
+    if args.json:
+        print(json.dumps({"device": profile, "capabilities": caps, "providers": collector.provider_status(),
+                          "tools": device.VENDOR_TOOLS.get(profile["vendor"], [])}, indent=2))
+        return
+    title = " ".join(filter(None, [profile["vendor"] if profile["vendor"] != profile.get("line") else None, profile["model"]]))
+    console.print(f"[bold]{title or 'This PC'}[/bold]  {profile['form_factor']} · {profile.get('line') or 'no product line'}"
+                  f" · BIOS {profile.get('bios') or '—'}")
+    table = Table(show_header=True, title_justify="left")
+    for column in ("Feature", "Status", "Detail"):
+        table.add_column(column)
+    labels = {"ok": "works", "partly": "partly", "needs": "needs setup", "none": "not available"}
+    for cap in caps:
+        detail = cap["detail"] + (f"\n→ {cap['how']}" if cap.get("how") else "")
+        table.add_row(cap["area"], labels.get(cap["status"], cap["status"]), detail)
+    console.print(table)
+    tools = device.VENDOR_TOOLS.get(profile["vendor"], [])
+    if tools:
+        console.print(f"What you can change on this {profile['vendor']}:")
+        for what, how in tools:
+            console.print(f"  • {what}: {how}")
 
 
 def cmd_battery(_args):
@@ -339,6 +372,10 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(func=cmd_status)
 
     sub.add_parser("battery", help="battery health report").set_defaults(func=cmd_battery)
+
+    d = sub.add_parser("device", help="identify this PC and show what OMNI can read and change on it")
+    d.add_argument("--json", action="store_true")
+    d.set_defaults(func=cmd_device)
 
     b = sub.add_parser("bench", help="run benchmarks")
     b.add_argument("kind", choices=["cpu", "memory", "disk", "gpu", "all"])

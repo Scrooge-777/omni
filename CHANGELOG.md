@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.0 — 2026-10-19: `omni device`, docs cleanup
+
+- **`omni device [--json]`:** prints the same "Your device" checklist as the Fans page in the terminal: maker, model, BIOS, what works, what needs setup, and which maker app changes the rest.
+- **README:** install steps use `git clone`, the broken sensor table is fixed, and the old "2.0" title is gone.
+
 ## 2.3.1 — 2026-10-18: GPU graph spikes fixed
 
 - **GPU power and clock spikes:** every ~10 s the NVIDIA driver returned one bad sample on an idle GPU (about 160 W with the clock at 0–180 MHz, against a real ~28 W). The charts plotted it as a spike. A median of the last five readings now drops it.
