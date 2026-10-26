@@ -1,3 +1,3 @@
 """OMNI: laptop hardware telemetry, battery health, benchmarks and power tuning."""
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"

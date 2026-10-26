@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.1 — 2026-10-27: live feed fixed in OMNI.exe and fresh installs
+
+- **Fixed:** the dashboard stayed on "Connecting" in `OMNI.exe` (and in a source install on a PC with no WebSocket library). The server log said "No supported WebSocket library detected". OMNI now depends on `websockets`, and the exe bundles it.
+- **Release check:** the release workflow now starts the built exe and confirms the page loads, the API answers and the live WebSocket sends data, so this cannot ship broken again.
+- If you downloaded 2.5.0, replace it with this version.
+
 ## 2.5.0 — 2026-10-26: health summary, mini window, `omni report`, standalone exe
 
 - **Health summary:** the Overview page now starts with one plain verdict: "Everything looks healthy", "Worth a look" or "Needs attention". It lists what is wrong (hot CPU or GPU, memory almost full, worn battery, low battery, a drive reporting a problem), and each line links to the right page. It uses your alert limits from Settings.

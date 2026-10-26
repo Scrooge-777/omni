@@ -26,12 +26,14 @@ jobs:
         run: >
           python -m PyInstaller --noconfirm --onefile --name OMNI --paths src
           --add-data "src/omni/web/static;omni/web/static"
-          --collect-submodules uvicorn --collect-submodules omni --hidden-import win32timezone
+          --collect-submodules uvicorn --collect-submodules websockets --collect-submodules omni --hidden-import win32timezone
           packaging/launcher.py
       - name: Smoke test the exe
         run: |
           dist\OMNI.exe --version
           dist\OMNI.exe settings get | Select-Object -First 3
+      - name: Smoke test the running exe (page, API, live WebSocket)
+        run: python packaging/smoke_exe.py dist/OMNI.exe
       - name: Checksum
         shell: bash
         run: |
