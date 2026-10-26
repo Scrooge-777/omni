@@ -631,3 +631,46 @@ td.name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
   .cyl.e-core { --cyl-h: 64px; }
   .engine { grid-template-columns: 90px 1fr 40px; }
 }
+
+/* ---------- skip link, health summary, mini mode, help */
+.skip-link { position: absolute; left: 8px; top: -48px; z-index: 100; padding: 8px 14px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none; transition: top 0.15s; }
+.skip-link:focus { top: 8px; }
+.gauge-card[data-level="warn"] .gauge-label::before { content: "▲ "; color: var(--serious); }
+.gauge-card[data-level="danger"] .gauge-label::before { content: "✖ "; color: var(--critical); }
+
+.health {
+  display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; padding: 14px 18px;
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--good);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.health[data-level="warn"] { border-left-color: var(--serious); }
+.health[data-level="danger"] { border-left-color: var(--critical); }
+.health-mark { font-size: 1.15rem; font-weight: 800; line-height: 1.4; color: var(--good-text); }
+.health[data-level="warn"] .health-mark { color: var(--serious); }
+.health[data-level="danger"] .health-mark { color: var(--critical-text); }
+.health-body { display: grid; gap: 2px; min-width: 0; }
+.health-body ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+button.link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+
+body.mini .topbar .brand .version, body.mini .topbar-stats, body.mini #window-select, body.mini #mini-btn, body.mini #help-btn, body.mini .menu-btn,
+body.mini .sidebar, body.mini .page-head, body.mini .view.active > .grid-2 { display: none; }
+body.mini .content { margin-left: 0; padding: 14px; }
+body.mini .gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+body.mini .gauge-wrap { width: 92px; height: 92px; }
+body.mini .gauge-number { font-size: 1.2rem; }
+body.mini .gauge-card { padding: 10px 8px; }
+
+.help-dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 22px 26px; max-width: 420px; box-shadow: var(--shadow-hover); }
+.help-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.help-dialog h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.shortcut-list { display: grid; gap: 8px; margin: 0 0 16px; }
+.shortcut-list div { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: baseline; }
+.shortcut-list dt { white-space: nowrap; }
+.shortcut-list dd { margin: 0; color: var(--text-2); }
+kbd { font: 600 0.78rem var(--font); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--axis); background: var(--surface-2); }
+
+.health-row { display: flex; align-items: stretch; gap: 12px; margin-bottom: 18px; }
+.health-row .health { flex: 1; margin-bottom: 0; }
+.health-row .btn { align-self: flex-start; white-space: nowrap; }
+body.mini .health-row .btn { display: none; }
+@media (max-width: 640px) { .health-row { flex-direction: column; } .health-row .btn { align-self: stretch; } }

@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from omni import __version__, bench, cleanup, device, memory, nettest, power, win
+from omni import __version__, bench, cleanup, device, memory, nettest, power, report, win
 from omni.collector import Collector
 from omni.config import SCHEMA, SettingsError, home_dir
 from omni.jobs import JobBusy, JobManager
@@ -40,6 +40,15 @@ def asset_version() -> str:
             digest.update(path.name.encode())
             digest.update(path.read_bytes())
     return digest.hexdigest()[:10]
+
+
+def same_origin(origin: str | None) -> bool:
+    """Browsers always send Origin on WebSocket upgrades. Refuse pages served from anywhere but
+    this dashboard (a missing Origin means a non-browser client, which can't be tricked by a web page)."""
+    if not origin:
+        return True
+    host = origin.split("://", 1)[-1].rsplit(":", 1)[0].strip("[]")
+    return host in ALLOWED_HOSTS
 
 
 def create_app(collector: Collector, token: str | None = None) -> FastAPI:
@@ -69,6 +78,9 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
             response.headers["Cache-Control"] = "no-cache"  # always revalidate (cheap: ETag)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
             "connect-src 'self' ws://localhost:* ws://127.0.0.1:*; frame-ancestors 'none'")
@@ -113,6 +125,14 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
             "ready": collector.device is not None,
         }
 
+    @app.get("/api/report", response_class=PlainTextResponse)
+    def health_report():
+        """Markdown health report (no account names, files or addresses) to paste into a chat or listing."""
+        snap = collector.latest() or collector.tick()
+        profile = getattr(collector, "device", None) or {}
+        caps = device.capabilities(profile, snap, snap.get("sources", []), win.is_admin()) if profile else None
+        return PlainTextResponse(report.build(snap, profile, caps, settings))
+
     @app.get("/api/live")
     def live(seconds: int = 300):
         return collector.live_series(min(seconds, 900))
@@ -137,7 +157,8 @@ def create_app(collector: Collector, token: str | None = None) -> FastAPI:
     @app.websocket("/ws/live")
     async def ws_live(socket: WebSocket):
         host = (socket.headers.get("host") or "").rsplit(":", 1)[0]
-        if host not in ALLOWED_HOSTS or not secrets.compare_digest(socket.query_params.get("token", ""), token):
+        if host not in ALLOWED_HOSTS or not same_origin(socket.headers.get("origin")) \
+                or not secrets.compare_digest(socket.query_params.get("token", ""), token):
             await socket.close(code=4401)
             return
         await socket.accept()

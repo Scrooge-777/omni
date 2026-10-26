@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Tag must match the package version
+        shell: bash
+        run: |
+          version=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          test "v$version" = "$GITHUB_REF_NAME"
+      - run: pip install -e ".[dev]" pyinstaller
+      - run: pytest -q
+      - name: Build OMNI.exe
+        run: >
+          python -m PyInstaller --noconfirm --onefile --name OMNI --paths src
+          --add-data "src/omni/web/static;omni/web/static"
+          --collect-submodules uvicorn --collect-submodules omni --hidden-import win32timezone
+          packaging/launcher.py
+      - name: Smoke test the exe
+        run: |
+          dist\OMNI.exe --version
+          dist\OMNI.exe settings get | Select-Object -First 3
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          sha256sum OMNI.exe > OMNI.exe.sha256
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/OMNI.exe dist/OMNI.exe.sha256 \
+            --generate-notes --title "OMNI $GITHUB_REF_NAME"

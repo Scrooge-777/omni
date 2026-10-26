@@ -11,7 +11,7 @@ import webbrowser
 from rich.console import Console
 from rich.table import Table
 
-from omni import __version__, bench, cleanup, device, power, units, win
+from omni import __version__, bench, cleanup, device, power, report, units, win
 from omni.config import Settings, SettingsError, home_dir
 
 console = Console()
@@ -141,6 +141,38 @@ def cmd_device(args):
         console.print(f"What you can change on this {profile['vendor']}:")
         for what, how in tools:
             console.print(f"  • {what}: {how}")
+
+
+def _printable(text: str) -> str:
+    """Console code pages like cp1252 can't show the report's check marks; fall back to plain letters."""
+    try:
+        text.encode(sys.stdout.encoding or "utf-8")
+        return text
+    except UnicodeEncodeError:
+        for symbol, plain in (("✓", "OK"), ("✖", "X"), ("▲", "!")):
+            text = text.replace(symbol, plain)
+        return text.encode(sys.stdout.encoding or "ascii", errors="replace").decode(sys.stdout.encoding or "ascii")
+
+
+def cmd_report(args):
+    from omni.collector import Collector
+
+    collector = Collector()
+    collector.refresh_slow(force=True)
+    collector.tick()
+    collector.refresh_sensors()
+    profile = device.identify()
+    collector.device = profile
+    time.sleep(1.0)
+    snap = collector.tick()
+    caps = device.capabilities(profile, snap, snap.get("sources", []), win.is_admin())
+    text = report.build(snap, profile, caps, collector.settings)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        console.print(f"Report saved to {args.output}")
+    else:
+        print(_printable(text))
 
 
 def cmd_battery(_args):
@@ -372,6 +404,10 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(func=cmd_status)
 
     sub.add_parser("battery", help="battery health report").set_defaults(func=cmd_battery)
+
+    rep = sub.add_parser("report", help="one-page health report (Markdown) to share or keep")
+    rep.add_argument("-o", "--output", help="write to a file instead of the screen")
+    rep.set_defaults(func=cmd_report)
 
     d = sub.add_parser("device", help="identify this PC and show what OMNI can read and change on it")
     d.add_argument("--json", action="store_true")

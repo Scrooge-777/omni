@@ -1,0 +1,41 @@
+name: Bug report
+description: Something shows a wrong value, crashes or does not work on your laptop
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Output of `omni device`
+      description: Paste it here. It lists your maker, model and which sensors OMNI can read. It contains no personal data.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OMNI version
+      placeholder: "2.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - OMNI.exe from a release
+        - pip install from source
+        - OMNI.bat
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"

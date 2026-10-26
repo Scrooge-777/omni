@@ -10,6 +10,7 @@
   <script src="/static/theme.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
     <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu" data-icon="menu"></button>
     <div class="brand"><img src="/static/icon.svg" alt="" width="26" height="26"><span>OMNI</span> <span class="version">v{{VERSION}}</span></div>
@@ -19,6 +20,8 @@
         <button data-window="60">1m</button><button data-window="120">2m</button><button data-window="300">5m</button><button data-window="900">15m</button>
       </div>
       <span class="conn" id="conn" title="Live connection"><span class="dot"></span><span id="conn-text">Connecting</span></span>
+      <button class="icon-btn" id="mini-btn" aria-label="Open mini window" title="Open a small separate window (M)" data-icon="popout"></button>
+      <button class="icon-btn" id="help-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
       <button class="icon-btn" id="theme-btn" aria-label="Switch theme" title="Switch theme"></button>
     </div>
   </header>
@@ -46,11 +49,13 @@
     <a class="nav-foot" href="https://github.com/Scrooge-777/omni" target="_blank" rel="noopener" title="Source on GitHub"><span data-icon="github" data-size="16"></span><span class="nav-text">Open source on GitHub</span></a>
   </nav>
 
-  <main class="content">
+  <main class="content" id="main" tabindex="-1">
     <div id="alerts" class="alerts" aria-live="polite"></div>
 
     <section class="view active" id="view-overview">
       <div class="page-head"><h1>Overview</h1><p class="hint" id="overview-machine"></p></div>
+      <div class="health-row"><div class="health" id="health-summary" role="status" aria-live="polite"></div>
+        <button class="btn" id="report-copy" title="Copy a one-page health report you can paste into a chat or a listing">Copy report</button></div>
       <div class="gauges" id="overview-gauges"></div>
       <div class="grid-2">
         <div class="card"><h2>Usage</h2><div class="chart" data-chart="usage"></div></div>
@@ -311,6 +316,21 @@
   <script src="/static/icons.js"></script>
   <script src="/static/charts.js"></script>
   <script src="/static/components.js"></script>
+    <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
+    <form method="dialog">
+      <h2 id="help-title">Keyboard shortcuts</h2>
+      <dl class="shortcut-list">
+        <div><dt><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd></dt><dd>Jump to a section (in sidebar order)</dd></div>
+        <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Previous / next section</dd></div>
+        <div><dt><kbd>T</kbd></dt><dd>Change theme (system, dark, light)</dd></div>
+        <div><dt><kbd>M</kbd></dt><dd>Open the mini window</dd></div>
+        <div><dt><kbd>?</kbd></dt><dd>Show this help</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Close this help</dd></div>
+      </dl>
+      <button class="btn primary" value="close">Close</button>
+    </form>
+  </dialog>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

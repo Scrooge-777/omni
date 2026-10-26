@@ -4,6 +4,9 @@ A laptop telemetry and tuning tool for Windows: live hardware dashboard, battery
 real benchmarks, stress tests with throttling detection, safe cleanup and reversible
 power tweaks. A ground-up rewrite of [ubat](https://github.com/Scrooge-777/ubat) (OMNI 1.x).
 
+- **Works on any Windows laptop:** Dell, HP, Lenovo, ASUS, Acer, MSI, Microsoft Surface and more.
+  Core readings (CPU, memory, battery health, SSD health, network) come from Windows itself.
+  Fan speeds and fan modes depend on the maker; `omni device` shows what your model supports.
 - **One engine, three interfaces:** web dashboard, terminal dashboard and command line all
   use the same sensor collector.
 - **Metric everywhere:** °C, W, Wh, GB and MB/s by default. Fahrenheit, binary sizes (GiB)
@@ -11,7 +14,27 @@ power tweaks. A ground-up rewrite of [ubat](https://github.com/Scrooge-777/ubat)
 - **No made-up numbers:** values come from the hardware. When a sensor isn't available
   the UI says so instead of showing a placeholder value.
 
+<p align="center">
+  <img src="docs/screenshots/overview-dark.png" width="49%" alt="OMNI overview in dark mode: health summary and eight live gauges">
+  <img src="docs/screenshots/overview-light.png" width="49%" alt="OMNI overview in light mode">
+</p>
+
+## What is it good for?
+
+- **Buying or selling a used laptop:** `omni report` gives battery health (health %, wear, cycles), SSD health and a plain verdict you can paste into a listing or send to a buyer.
+- **"Why is my laptop slow, hot or loud?":** live temperatures, clocks, watts per component, fan speed and a throttling check (stress test) show whether it is heat, power limits or just a busy process.
+- **Battery life:** see what is drawing power, and apply reversible battery-only tweaks.
+- **Peace of mind:** a mini window or the terminal dashboard keeps the essentials visible, and alerts warn about heat, low battery and failing drives.
+
 ## Quick start
+
+**Easiest: no Python needed.** Download `OMNI.exe` from the
+[latest release](https://github.com/Scrooge-777/omni/releases/latest) and double-click it. The dashboard opens in your browser.
+Windows may show a "protected your PC" (SmartScreen) notice because the file is not code-signed yet:
+choose *More info*, then *Run anyway*. Compare the file with the published `OMNI.exe.sha256` first if you like
+(`certutil -hashfile OMNI.exe SHA256`).
+
+**From source** (Windows 10/11, Python 3.11+):
 
 ```powershell
 git clone https://github.com/Scrooge-777/omni
@@ -20,7 +43,7 @@ pip install -e .
 omni            # opens the web dashboard at http://localhost:5050
 ```
 
-Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
+Or double-click `OMNI.bat` in the source folder.
 
 | Command | What it does |
 |---|---|
@@ -28,6 +51,7 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 | `omni tui` | Terminal dashboard (`q` quit, `s` sort processes) |
 | `omni status [--json]` | One-shot summary |
 | `omni battery` | Battery health report |
+| `omni report [-o file.md]` | One-page health report (battery, drives, readings) safe to share |
 | `omni device [--json]` | Identify this PC and list what OMNI can read and change on it |
 | `omni bench cpu\|memory\|disk\|gpu\|all` | Benchmarks (saved to history) |
 | `omni stress cpu\|gpu\|both --seconds 120` | Stress test with throttling report |
@@ -39,6 +63,19 @@ Or double-click `OMNI.bat`. Requires Windows 10/11 and Python 3.11+.
 | `omni ram` · `omni ram --empty standby_low` | RAM map and RAMMap-style Empty commands (admin) |
 | `omni history export --range 7d -o week.csv` | Export recorded telemetry |
 | `omni settings get` · `omni settings set units.temperature F` | View / change settings |
+
+## Keyboard and mini window
+
+| Key | Action |
+|---|---|
+| `1`–`0` | Jump to a section (sidebar order) |
+| `[` `]` | Previous / next section |
+| `T` | Change theme (system, dark, light) |
+| `M` | Open the mini window (verdict and gauges only) |
+| `?` | Show the shortcut list |
+
+Gauges and the health verdict use symbols and words as well as color, and respect your system's
+reduced-motion and dark/light settings.
 
 ## What it reads
 
@@ -87,7 +124,8 @@ History, the battery-report cache and power-setting backups live in the same fol
 
 - **Web server:** listens on `127.0.0.1` only. Every API call needs a per-run secret token,
   and requests with a foreign `Host` header are refused (blocks other websites and DNS
-  rebinding from driving the dashboard). Strict Content-Security-Policy.
+  rebinding from driving the dashboard). The live WebSocket checks the browser `Origin` too.
+  Strict Content-Security-Policy. See [SECURITY.md](SECURITY.md).
 - **Power tweaks** only change on-battery values, save the originals first, and
   `Restore` puts them back. **PCIe ASPM is never touched**: on some NVMe drives it makes
   the SSD drop off the bus (WHEA Event 17).
@@ -102,6 +140,10 @@ History, the battery-report cache and power-setting backups live in the same fol
 pip install -e ".[dev]"
 pytest
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). To add support for your laptop model, open the
+**My laptop is not fully supported** issue and paste the output of `omni device`.
+Releases build `OMNI.exe` with PyInstaller (`packaging/launcher.py`) when a `v*` tag is pushed.
 
 Layout:
 

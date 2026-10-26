@@ -205,12 +205,16 @@ function connect() {
 // ------------------------------------------------------------------ navigation
 
 function showView(name) {
+  const mini = name === 'mini';
+  document.body.classList.toggle('mini', mini);
+  if (mini) name = 'overview';
   if (!$(`#view-${name}`)) name = 'overview';
   state.view = name;
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
   $$('.sidebar button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   $('#sidebar').classList.remove('open');
-  if (location.hash !== `#${name}`) history.replaceState(null, '', `#${name}`);
+  const hash = mini ? 'mini' : name;
+  if (location.hash !== `#${hash}`) history.replaceState(null, '', `#${hash}`);
   VIEWS[name]?.show?.();
   render();
 }
@@ -302,6 +306,53 @@ async function loadDevice() {
     el('div', { class: 'cap-list' }, ...info.tools.map((t) => capRow(t.what, 'partly', t.how))))] : []));
 }
 
+// ------------------------------------------------------------------ health summary
+
+/** One plain-language verdict for the whole machine, so the first screen answers "is anything wrong?" */
+function assess(snap) {
+  const issues = [];
+  const add = (level, text, view) => issues.push({ level, text, view });
+  const limits = state.settings?.alerts || {};
+  const cpuLimit = limits.cpu_temp_c ?? 95;
+  const gpuLimit = limits.gpu_temp_c ?? 87;
+  const { cpu, memory: m, battery: b } = snap;
+
+  if (cpu.temp_c >= cpuLimit) add('danger', `CPU is very hot (${fmt.temp(cpu.temp_c)})`, 'cpu');
+  else if (cpu.temp_c >= cpuLimit - 10) add('warn', `CPU is running warm (${fmt.temp(cpu.temp_c)})`, 'cpu');
+  const gpuTemp = snap.gpu?.available ? snap.gpu.temp_c : null;
+  if (gpuTemp >= gpuLimit) add('danger', `GPU is very hot (${fmt.temp(gpuTemp)})`, 'gpu');
+  else if (gpuTemp >= gpuLimit - 7) add('warn', `GPU is running warm (${fmt.temp(gpuTemp)})`, 'gpu');
+  if (m.usage_pct >= 90) add('warn', `Memory is almost full (${Math.round(m.usage_pct)} %)`, 'storage');
+  if (b.present) {
+    if (b.health_pct != null && b.health_pct < 70) add('danger', `Battery has lost ${(100 - b.health_pct).toFixed(0)} % of its capacity`, 'battery');
+    else if (b.health_pct != null && b.health_pct < 85) add('warn', `Battery health is ${b.health_pct.toFixed(0)} %`, 'battery');
+    if (b.state === 'discharging' && b.percent <= (limits.battery_low_pct ?? 20)) add('danger', `Battery is low (${Math.round(b.percent)} %)`, 'battery');
+  }
+  for (const d of snap.storage?.disks || []) {
+    if (d.health && d.health !== 'Healthy') add('danger', `Drive ${d.name} reports "${d.health}"`, 'storage');
+  }
+  return issues;
+}
+
+function renderHealth(snap) {
+  const box = $('#health-summary');
+  const issues = assess(snap);
+  const level = issues.some((i) => i.level === 'danger') ? 'danger' : issues.length ? 'warn' : 'ok';
+  const key = level + issues.map((i) => i.text).join('|');
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.dataset.level = level;
+  const headline = { ok: 'Everything looks healthy', warn: 'Worth a look', danger: 'Needs attention' }[level];
+  const mark = { ok: '✓', warn: '▲', danger: '✖' }[level];
+  box.replaceChildren(
+    el('span', { class: 'health-mark', 'aria-hidden': 'true' }, mark),
+    el('div', { class: 'health-body' },
+      el('strong', {}, headline),
+      issues.length
+        ? el('ul', {}, ...issues.map((i) => el('li', {}, el('button', { type: 'button', class: 'link', onclick: () => showView(i.view) }, i.text))))
+        : el('span', { class: 'hint' }, 'Temperatures, memory, battery and drives are all in their normal range.')));
+}
+
 const VIEWS = {
   overview: {
     key: () => 'static',
@@ -326,6 +377,7 @@ const VIEWS = {
       const { cpu, battery: b, memory: m, storage: s, network: n, power: p = {} } = snap;
       const g = dedicatedGpu(snap);
       $('#overview-machine').textContent = [cpu.name, g && g.name].filter(Boolean).join(' · ');
+      renderHealth(snap);
       ovGauges.cpu.set(cpu.usage_pct, fmt.freq(cpu.clock_mhz));
       ovGauges.cpuTemp.set(fmt.tempValue(cpu.temp_c), cpu.temp_c >= 95 ? 'Very hot' : cpu.temp_c >= 85 ? 'Hot' : 'Normal');
       // Grow the power gauge's scale to the highest reading seen, rounded to a tidy number.
@@ -1234,6 +1286,44 @@ function decoratePages() {
   Icons.hydrate();
 }
 
+// ------------------------------------------------------------------ keyboard
+
+const SHORTCUT_VIEWS = () => $$('.sidebar button[data-view]').map((b) => b.dataset.view);
+
+async function copyReport() {
+  try {
+    const res = await fetch('/api/report', { headers: { 'X-OMNI-Token': TOKEN } });
+    if (!res.ok) throw new Error('Could not build the report');
+    await navigator.clipboard.writeText(await res.text());
+    toast('Health report copied');
+  } catch (err) { toast(err.message || 'Copy failed'); }
+}
+
+function openMini() {
+  window.open(`${location.pathname}#mini`, 'omni-mini', 'popup,width=460,height=640');
+}
+
+function onKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+  const dialog = $('#help-dialog');
+  if (dialog.open) return;
+  const views = SHORTCUT_VIEWS();
+  if (/^[0-9]$/.test(e.key)) {
+    const view = views[e.key === '0' ? 9 : Number(e.key) - 1];
+    if (view) showView(view);
+  } else if (e.key === '[' || e.key === ']') {
+    const next = views.indexOf(state.view) + (e.key === ']' ? 1 : -1);
+    showView(views[(next + views.length) % views.length]);
+  } else if (e.key === '?') {
+    dialog.showModal();
+  } else if (e.key === 't' || e.key === 'T') {
+    cycleTheme();
+  } else if (e.key === 'm' || e.key === 'M') {
+    openMini();
+  }
+}
+
 async function init() {
   decoratePages();
   const windowButtons = $$('#window-select button');
@@ -1244,6 +1334,11 @@ async function init() {
   window.addEventListener('hashchange', () => showView(location.hash.slice(1) || 'overview'));
   $('#menu-btn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
   $('#theme-btn').addEventListener('click', cycleTheme);
+  $('#mini-btn').addEventListener('click', openMini);
+  $('#report-copy').addEventListener('click', copyReport);
+  $('#help-btn').addEventListener('click', () => $('#help-dialog').showModal());
+  document.addEventListener('keydown', onKey);
+  $$('.sidebar button[data-view]').forEach((b, i) => { if (i < 10) b.setAttribute('aria-keyshortcuts', String((i + 1) % 10)); });
   segmented('#proc-sort', 'sort', (sort) => api('/api/processes/sort', { method: 'POST', body: { sort } }).catch((e) => toast(e.message)));
   segmented('#power-mode', 'mode', async (mode) => {
     try { await api('/api/power/mode', { method: 'POST', body: { mode } }); toast('Power mode changed'); }

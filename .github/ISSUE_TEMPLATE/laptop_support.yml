@@ -1,0 +1,23 @@
+name: My laptop is not fully supported
+description: Fans, temperatures or battery data are missing on your laptop model
+labels: [hardware]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Laptop maker and model
+      placeholder: "Lenovo Legion 5 15ARH7"
+    validations:
+      required: true
+  - type: textarea
+    id: device
+    attributes:
+      label: Output of `omni device`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: other
+    attributes:
+      label: What do other tools show?
+      description: For example, does HWiNFO or LibreHardwareMonitor show fan speeds or temperatures that OMNI is missing? Which sensor names?

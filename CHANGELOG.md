@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.5.0 — 2026-10-26: health summary, mini window, `omni report`, standalone exe
+
+- **Health summary:** the Overview page now starts with one plain verdict: "Everything looks healthy", "Worth a look" or "Needs attention". It lists what is wrong (hot CPU or GPU, memory almost full, worn battery, low battery, a drive reporting a problem), and each line links to the right page. It uses your alert limits from Settings.
+- **Not only color:** gauges in a warning or danger state now also show a symbol (▲ or ✖) in front of their name, and the verdict uses a symbol and words, so the state is clear without telling red from green.
+- **Mini window:** the pop-out button (or `M`) opens a small separate window with just the verdict and the gauges. It also opens directly at `#mini`.
+- **Keyboard:** `1`–`0` jump to a section, `[` and `]` go to the previous or next one, `T` changes the theme, `M` opens the mini window, `?` lists them all. A "Skip to content" link helps keyboard and screen-reader users.
+- **`omni report`:** a one-page Markdown health report (summary, machine, battery health and wear, drives, current readings, what OMNI can read). It has no account names, file names or addresses, so it is safe to paste into a chat or a used-laptop listing. `omni report -o report.md` saves it. The dashboard has a **Copy report** button and an `/api/report` endpoint.
+- **Standalone `OMNI.exe`:** every release now includes a single-file Windows build that needs no Python, plus a SHA-256 checksum. It is built and smoke-tested by the release workflow.
+- **Security:** the live WebSocket now checks the browser's `Origin` as well as the token and host. Responses add `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy` and `Permissions-Policy` headers.
+- **Project:** added `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates (including "My laptop is not fully supported"), Dependabot, CodeQL scanning and a release workflow.
+
 ## 2.4.0 — 2026-10-19: `omni device`, docs cleanup
 
 - **`omni device [--json]`:** prints the same "Your device" checklist as the Fans page in the terminal: maker, model, BIOS, what works, what needs setup, and which maker app changes the rest.
